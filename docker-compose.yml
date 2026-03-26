@@ -1,0 +1,42 @@
+services:
+    postgres:
+        image: postgres:latest
+        container_name: volt-spot-db
+        restart: always
+        environment:
+            POSTGRES_USER: ${DB_USER}
+            POSTGRES_PASSWORD: ${DB_PASS}
+            POSTGRES_DB: ${DB_NAME}
+        ports:
+            - "5432:5432"
+        volumes:
+            - postgres_data:/var/lib/postgresql
+
+    backend:
+        build:
+            context: ./backend
+            dockerfile: Dockerfile
+        container_name: volt-spot-backend
+        restart: always
+        depends_on:
+            - postgres
+        environment:
+            - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${DB_NAME}
+            - SPRING_DATASOURCE_USERNAME=${DB_USER}
+            - SPRING_DATASOURCE_PASSWORD=${DB_PASS}
+        ports:
+            - "8080:8080"
+
+    frontend:
+        build:
+            context: ./frontend
+            dockerfile: Dockerfile
+        container_name: volt-spot-frontend
+        restart: always
+        depends_on:
+            - backend
+        ports:
+            - "3000:80"
+
+volumes:
+    postgres_data:

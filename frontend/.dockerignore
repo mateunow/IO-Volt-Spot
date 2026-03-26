@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env*
+.git/
+.idea/
+.vscode/
+.dockerignore
+.gitignore
+.DS_Store
+Thumbs.db
