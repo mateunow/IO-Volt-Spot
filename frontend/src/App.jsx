@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import "./App.css";
+import "leaflet/dist/leaflet.css";
+import MapView from "./components/MapView";
+import SearchBar from "./components/SearchBar";
+
 
 function App() {
     const [message, setMessage] = useState("Ładowanie danych z serwera...");
+    const [location, setLocation] = useState(null);
 
     useEffect(() => {
         fetch("http://localhost:8080/api/ping")
@@ -23,10 +28,13 @@ function App() {
 
     return (
         <>
-            <h1>Frontend Volt Spot</h1>
-            <div className="card">
+            {/* <div className="card">
                 <p>Wiadomość z backendu:</p>
                 <h2>{message}</h2>
+            </div> */}
+            <SearchBar setLocation={setLocation} />
+            <div className="map-wrapper">
+            <MapView location={location} />
             </div>
         </>
     );

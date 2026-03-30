@@ -1,3 +1,43 @@
+.map-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0;
+}
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  }
+
+.map {
+  height: 100%;
+  width: 100%;
+}
+
+.search-bar {
+  position: fixed;
+  top: 15px;
+  left: 55px;
+  z-index: 1000;
+
+  background: white;
+  padding: 10px;
+  border-radius: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.search-bar input {
+  padding: 6px;
+}
+
+.search-bar button {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;
