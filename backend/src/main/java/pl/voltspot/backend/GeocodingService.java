@@ -4,7 +4,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
-import pl.voltspot.backend.Exceptions.GeocodingException;
+import pl.voltspot.backend.exceptions.GeocodingException;
 
 import java.io.BufferedReader;
 import java.io.IOException;
