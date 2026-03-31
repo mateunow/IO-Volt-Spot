@@ -29,7 +29,7 @@ function SearchBar({ setLocation }) {
     <div className="search-bar">
       <input
         type="text"
-        placeholder="Szukaj miasta..."
+        placeholder="Szukaj adresu..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
