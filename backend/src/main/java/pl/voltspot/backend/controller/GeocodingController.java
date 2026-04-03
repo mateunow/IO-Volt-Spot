@@ -1,9 +1,10 @@
-package pl.voltspot.backend;
+package pl.voltspot.backend.controller;
 import org.springframework.web.bind.annotation.*;
+import pl.voltspot.backend.service.GeocodingService;
+import pl.voltspot.backend.dto.geocoding.LocationResponse;
 
 @RestController
 @RequestMapping("/api/geocoding")
-@CrossOrigin(origins = "http://localhost:5173")
 public class GeocodingController {
 
     private final GeocodingService geocodingService;
