@@ -51,7 +51,7 @@ public class Station {
     private String operatorName;
 
     @Column(name = "opening_hours", columnDefinition = "TEXT")
-    private String openingHours;
+    private String openingHours; // Nie ma takiego pola w OCM!
 
     @Column(name = "access_type", length = 120)
     private String accessType;
