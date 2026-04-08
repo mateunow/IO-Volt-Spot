@@ -1,13 +1,16 @@
 package pl.voltspot.backend.mapper;
 
+import pl.voltspot.backend.dto.external.ExternalOCMStation;
 import pl.voltspot.backend.dto.feedback.StationFeedbackResponse;
 import pl.voltspot.backend.dto.station.*;
 import pl.voltspot.backend.dto.user.UserResponse;
 import pl.voltspot.backend.entity.*;
 import pl.voltspot.backend.entity.User;
 
+import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 public final class StationMapper {
 
@@ -117,5 +120,62 @@ public final class StationMapper {
                 feedback.getComment(),
                 feedback.getCreatedAt()
         );
+    }
+
+    public static Station toEntity(ExternalOCMStation external){
+        if(external == null) return null;
+        Station station = new Station();
+
+        station.setExternalId(external.id().toString());
+        station.setExternalSource("OCM");
+
+        var addr = Optional.ofNullable(external.addressInfo());
+        station.setName(addr.map(ExternalOCMStation.AddressInfo::title).orElse("Unknown Station"));
+        station.setLatitude(addr.map(ExternalOCMStation.AddressInfo::latitude).orElse(0.0));
+        station.setLongitude(addr.map(ExternalOCMStation.AddressInfo::longitude).orElse(0.0));
+        station.setAddressLine(addr.map(ExternalOCMStation.AddressInfo::addressLine1).orElse(null));
+        station.setCity(addr.map(ExternalOCMStation.AddressInfo::town).orElse(""));
+        // TODO Translacja countryID na nazwę kraju
+        station.setCountry(addr.map(ExternalOCMStation.AddressInfo::countryId).orElse(0).toString());
+
+        station.setOperatorName(
+                Optional.ofNullable(external.operatorInfo())
+                        .map(ExternalOCMStation.OperatorInfo::title)
+                        .orElse("Unknown")
+        );
+        station.setActive(
+                Optional.ofNullable(external.statusType())
+                        .map(ExternalOCMStation.StatusType::isOperational)
+                        .orElse(true)
+        );
+
+        if(external.connections() != null){
+            for(ExternalOCMStation.Connection connection : external.connections()){
+                StationConnector connector = new StationConnector();
+                connector.setStation(station);
+                // TODO Translacja connectionTypeId na nazwę typu złącza
+                if(connection.connectionTypeId() != null){
+                    connector.setConnectorType(connection.connectionTypeId().toString());
+                } else {
+                    connector.setConnectorType("Unknown");
+                }
+                // TODO Translacja currentTypeId na nazwę typu natężenia()
+                if(connection.currentTypeId() != null){
+                    connector.setCurrentType(connection.currentTypeId().toString());
+                }
+                if(connection.powerKW() != null){
+                    connector.setPowerKw(new BigDecimal(connection.powerKW()));
+                }
+                if(connection.quantity() != null){
+                    connector.setQuantity(connection.quantity());
+                } else {
+                    connector.setQuantity(1);
+                }
+
+                station.getConnectors().add(connector);
+            }
+        }
+
+        return station;
     }
 }

@@ -8,15 +8,16 @@ import org.springframework.web.client.RestClient;
 import pl.voltspot.backend.dto.external.ExternalOCMStation;
 
 import java.util.List;
+import java.util.Locale;
 
 @Component
 @RequiredArgsConstructor
 public class OCMClient{
 
     private final RestClient restClient;
-
     public List<ExternalOCMStation> fetchStations(Double minLat, Double minLon, Double maxLat, Double maxLon) {
-        String bbox = String.format("[[%f,%f],[%f,%f]", minLat, minLon, maxLat, maxLon);
+        String bbox = String.format(Locale.US, "(%f,%f),(%f,%f)", minLat, minLon, maxLat, maxLon);
+
 
         return restClient.get()
                 .uri(uriBuilder -> uriBuilder

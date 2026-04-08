@@ -1,8 +1,11 @@
 package pl.voltspot.backend.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pl.voltspot.backend.client.OCMClient;
+import pl.voltspot.backend.dto.external.ExternalOCMStation;
 import pl.voltspot.backend.dto.station.StationDetailsResponse;
 import pl.voltspot.backend.dto.station.StationMarkerResponse;
 import pl.voltspot.backend.dto.station.StationStatusSnapshotResponse;
@@ -19,10 +22,12 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class StationService {
 
     private final StationRepository stationRepository;
     private final StationStatusSnapshotRepository snapshotRepository;
+    private final OCMClient ocmClient;
 
     @Transactional(readOnly = true)
     public List<StationMarkerResponse> getStations(Double lat, Double lon, Double radiusKm) {
@@ -88,5 +93,16 @@ public class StationService {
                 .orElseThrow(() -> new NotFoundException("Brak snapshotu statusu dla stacji o id " + stationId));
 
         return StationMapper.toStatusResponse(snapshot);
+    }
+
+    @Transactional
+    public void fetchStationsFromOCM(Double minLat, Double minLon, Double maxLat, Double maxLon){
+        List<ExternalOCMStation> externalOCMStations = ocmClient.fetchStations(minLat, minLon, maxLat, maxLon);
+        List<Station> stations = externalOCMStations
+                .stream()
+                .map(StationMapper::toEntity)
+                .toList();
+        stationRepository.saveAll(stations);
+        log.info("Successfully saved {} stations to the database.", stations.size());
     }
 }

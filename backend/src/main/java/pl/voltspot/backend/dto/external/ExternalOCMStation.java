@@ -5,12 +5,12 @@ import java.util.List;
 public record ExternalOCMStation(
         Long id,
         String uuid,
-        Integer operatorId,
         AddressInfo addressInfo,
         List<Connection> connections,
         String dateLastStatusUpdate,
         StatusType statusType,
-        List<UserComment> userComments
+        List<UserComment> userComments,
+        OperatorInfo operatorInfo
 ) {
     public record AddressInfo(
             Long id,
@@ -42,7 +42,16 @@ public record ExternalOCMStation(
             Long id,
             Integer chargePointId,
             Integer commentTypeId,
-            String userName,
-            String comment
+            String comment,
+            User user
+    ) {}
+
+    public record OperatorInfo(
+            String title
+    ) {}
+
+    public record User(
+            Long id,
+            String username
     ) {}
 }
