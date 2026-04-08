@@ -12,7 +12,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
+import static pl.voltspot.backend.mapper.ConnectionTypeID.CONNECTORS;
 import static pl.voltspot.backend.mapper.CountryID.COUNTRIES;
+import static pl.voltspot.backend.mapper.CurrentTypeID.CURRENTS;
 
 public final class StationMapper {
 
@@ -148,6 +150,7 @@ public final class StationMapper {
                         .map(ExternalOCMStation.OperatorInfo::title)
                         .orElse("Unknown")
         );
+
         station.setActive(
                 Optional.ofNullable(external.statusType())
                         .map(ExternalOCMStation.StatusType::isOperational)
@@ -158,15 +161,17 @@ public final class StationMapper {
             for(ExternalOCMStation.Connection connection : external.connections()){
                 StationConnector connector = new StationConnector();
                 connector.setStation(station);
-                // TODO Translacja connectionTypeId na nazwę typu złącza
                 if(connection.connectionTypeId() != null){
-                    connector.setConnectorType(connection.connectionTypeId().toString());
+                    connector.setConnectorType(
+                            CONNECTORS.getOrDefault(connection.connectionTypeId(), "Unknown")
+                    );
                 } else {
                     connector.setConnectorType("Unknown");
                 }
-                // TODO Translacja currentTypeId na nazwę typu natężenia()
                 if(connection.currentTypeId() != null){
-                    connector.setCurrentType(connection.currentTypeId().toString());
+                    connector.setCurrentType(
+                            CURRENTS.getOrDefault(connection.currentTypeId(), "Unknown")
+                    );
                 }
                 if(connection.powerKW() != null){
                     connector.setPowerKw(new BigDecimal(connection.powerKW()));
