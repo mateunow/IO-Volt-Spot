@@ -12,6 +12,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
+import static pl.voltspot.backend.mapper.CountryID.COUNTRIES;
+
 public final class StationMapper {
 
     private StationMapper() {
@@ -135,8 +137,11 @@ public final class StationMapper {
         station.setLongitude(addr.map(ExternalOCMStation.AddressInfo::longitude).orElse(0.0));
         station.setAddressLine(addr.map(ExternalOCMStation.AddressInfo::addressLine1).orElse(null));
         station.setCity(addr.map(ExternalOCMStation.AddressInfo::town).orElse(""));
-        // TODO Translacja countryID na nazwę kraju
-        station.setCountry(addr.map(ExternalOCMStation.AddressInfo::countryId).orElse(0).toString());
+        station.setCountry(addr
+                .map(ExternalOCMStation.AddressInfo::countryId)
+                .map(id -> COUNTRIES.getOrDefault(id, "Unknown"))
+                .orElse("Unknown")
+        );
 
         station.setOperatorName(
                 Optional.ofNullable(external.operatorInfo())
