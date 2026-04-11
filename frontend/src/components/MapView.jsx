@@ -21,7 +21,10 @@ const createIcon = (iconUrl) =>
   });
 
 
-function MapView({location}) {
+function MapView({ location, stations = [], selectedStationId, onStationClick }) {
+  const defaultIcon = createIcon(defaultStationIcon);
+  const selectedIcon = createIcon(availableStationIcon);
+
   return (
     <MapContainer
         center={[52.1128, 19.21195]}
@@ -41,20 +44,35 @@ function MapView({location}) {
             <Popup>Wybrana lokalizacja: {location.name}</Popup>
           </Marker>
           )}
-          {/* Pozycja latitude i longtitude, icon = createIcon(stacja zimportowana u góry z obrazka) */}
-            <Marker position={[50.0680211, 19.9126116]} icon={createIcon(defaultStationIcon)}>
-              {/* Opis po naciśnięciu na stacje */}
-            <Popup>Wydział zaznaczony testowo - defaultowa stacja</Popup>
-            </Marker>
-            <Marker position={[50.0694351,19.9063572]} icon={createIcon(occupiedStationIcon)}>
-            <Popup>Zajęta stacja</Popup>
-            </Marker>
-            <Marker position={[50.0695374,19.9029198]} icon={createIcon(availableStationIcon)}>
-            <Popup>Dostępna stacja</Popup>
-            </Marker>
-            <Marker position={[50.0683902,19.9059287]} icon={createIcon(disabledStationIcon)}>
-            <Popup>Wyłączona/zepsuta stacja</Popup>
-            </Marker>
+
+          {stations.map((station) => {
+            const lat = Number(station.latitude);
+            const lon = Number(station.longitude);
+            if (Number.isNaN(lat) || Number.isNaN(lon)) {
+              return null;
+            }
+
+            const markerIcon = station.id === selectedStationId ? selectedIcon : defaultIcon;
+
+            return (
+              <Marker
+                key={station.id}
+                position={[lat, lon]}
+                icon={markerIcon}
+                eventHandlers={{
+                  click: () => onStationClick?.(station.id),
+                }}
+              >
+                <Popup>
+                  <strong>{station.name || "Bez nazwy"}</strong>
+                  <br />
+                  {station.city || "Miasto nieznane"}
+                  <br />
+                  Operator: {station.operatorName || "Nieznany"}
+                </Popup>
+              </Marker>
+            );
+          })}
     </MapContainer>
   );
 }
