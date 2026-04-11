@@ -1,6 +1,6 @@
 import {useState} from "react";
 
-function SearchBar({ setLocation, setSearchRadiusKm }) {
+function SearchBar({ setLocation, setSearchRadiusKm, currentUser, authLoading, onLoginClick, onLogoutClick }) {
   const [query, setQuery] = useState("");
   const [radiusKm, setRadiusKm] = useState("10");
 
@@ -34,22 +34,41 @@ function SearchBar({ setLocation, setSearchRadiusKm }) {
 
   return (
     <div className="search-bar">
-      <input
-        type="text"
-        placeholder="Szukaj adresu..."
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      <input
-        type="number"
-        min="1"
-        step="1"
-        placeholder="Promień (km)"
-        value={radiusKm}
-        onChange={(e) => setRadiusKm(e.target.value)}
-        aria-label="Promień wyszukiwania w kilometrach"
-      />
-      <button onClick={handleSearch}>Szukaj</button>
+      <div className="search-bar-row">
+        <input
+          type="text"
+          placeholder="Szukaj adresu..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <input
+          type="number"
+          min="1"
+          step="1"
+          placeholder="Promień (km)"
+          value={radiusKm}
+          onChange={(e) => setRadiusKm(e.target.value)}
+          aria-label="Promień wyszukiwania w kilometrach"
+        />
+        <button type="button" onClick={handleSearch}>Szukaj</button>
+      </div>
+
+      <div className="search-bar-auth">
+        {currentUser ? (
+          <>
+            <span>
+              {currentUser.displayName} · {currentUser.role}
+            </span>
+            <button type="button" onClick={onLogoutClick} disabled={authLoading}>
+              Wyloguj
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={onLoginClick} disabled={authLoading}>
+            Zaloguj
+          </button>
+        )}
+      </div>
     </div>
   );
 }

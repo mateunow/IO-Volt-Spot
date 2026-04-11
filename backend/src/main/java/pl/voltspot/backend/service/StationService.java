@@ -13,6 +13,7 @@ import pl.voltspot.backend.entity.Station;
 import pl.voltspot.backend.entity.StationStatusSnapshot;
 import pl.voltspot.backend.exceptions.BadRequestException;
 import pl.voltspot.backend.exceptions.NotFoundException;
+import pl.voltspot.backend.exceptions.NotFoundException;
 import pl.voltspot.backend.mapper.StationMapper;
 import pl.voltspot.backend.repository.StationRepository;
 import pl.voltspot.backend.repository.StationStatusSnapshotRepository;
@@ -102,6 +103,14 @@ public class StationService {
                 .orElseThrow(() -> new NotFoundException("Brak snapshotu statusu dla stacji o id " + stationId));
 
         return StationMapper.toStatusResponse(snapshot);
+    }
+
+    public void deleteStationById(Long stationId) {
+        if (!stationRepository.existsById(stationId)) {
+            throw new NotFoundException("Nie znaleziono stacji o id " + stationId);
+        }
+
+        stationRepository.deleteById(stationId);
     }
 
     @Transactional

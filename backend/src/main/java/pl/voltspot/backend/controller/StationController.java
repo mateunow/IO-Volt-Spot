@@ -2,9 +2,11 @@ package pl.voltspot.backend.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import pl.voltspot.backend.auth.RequireRole;
 import pl.voltspot.backend.dto.station.StationDetailsResponse;
 import pl.voltspot.backend.dto.station.StationMarkerResponse;
 import pl.voltspot.backend.dto.station.StationStatusSnapshotResponse;
+import pl.voltspot.backend.enums.UserRole;
 import pl.voltspot.backend.service.StationService;
 
 import java.util.List;
@@ -33,5 +35,12 @@ public class StationController {
     @GetMapping("/{stationId}/status/latest")
     public StationStatusSnapshotResponse getLatestStatus(@PathVariable Long stationId) {
         return stationService.getLatestStatus(stationId);
+    }
+
+    @DeleteMapping("/{stationId}")
+    @RequireRole({UserRole.ADMIN})
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void deleteStation(@PathVariable Long stationId) {
+        stationService.deleteStationById(stationId);
     }
 }
