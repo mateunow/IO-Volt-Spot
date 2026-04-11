@@ -34,6 +34,7 @@ function formatConnector(connector) {
 
 function App() {
     const [location, setLocation] = useState(null);
+    const [searchRadiusKm, setSearchRadiusKm] = useState(null);
     const [stations, setStations] = useState([]);
     const [stationsLoading, setStationsLoading] = useState(false);
     const [stationsError, setStationsError] = useState(null);
@@ -67,6 +68,59 @@ function App() {
 
         loadStations();
     }, []);
+
+    useEffect(() => {
+        if (!location) {
+            return;
+        }
+
+        if (typeof searchRadiusKm !== "number" || Number.isNaN(searchRadiusKm) || searchRadiusKm <= 0) {
+            setStationsError("Promień wyszukiwania musi być większy od 0 km");
+            return;
+        }
+
+        const loadNearbyStations = async () => {
+            setStationsLoading(true);
+            setStationsError(null);
+            setSelectedStationId(null);
+
+            try {
+                const params = new URLSearchParams({
+                    lat: String(location.lat),
+                    lon: String(location.lon),
+                    radiusKm: String(searchRadiusKm),
+                });
+
+                const response = await fetch(`${API_BASE_URL}/api/stations?${params.toString()}`);
+
+                if (!response.ok) {
+                    throw new Error(`Błąd HTTP! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                setStations(Array.isArray(data) ? data : []);
+            } catch (error) {
+                console.error("Błąd pobierania stacji po odległości:", error);
+                setStationsError("Nie udało się pobrać stacji dla podanej lokalizacji i promienia");
+            } finally {
+                setStationsLoading(false);
+            }
+        };
+
+        loadNearbyStations();
+    }, [location, searchRadiusKm]);
+
+    useEffect(() => {
+        if (!selectedStationId) {
+            return;
+        }
+
+        const stationIsVisible = stations.some((station) => station.id === selectedStationId);
+        if (!stationIsVisible) {
+            setSelectedStationId(null);
+            setStationDetails(null);
+        }
+    }, [stations, selectedStationId]);
 
     useEffect(() => {
         if (!selectedStationId) {
@@ -135,7 +189,7 @@ function App() {
 
     return (
         <>
-            <SearchBar setLocation={setLocation} />
+            <SearchBar setLocation={setLocation} setSearchRadiusKm={setSearchRadiusKm} />
             <div className="map-wrapper">
                 <MapView
                     location={location}
@@ -163,7 +217,15 @@ function App() {
                 {stationsLoading && <p>Ładowanie stacji...</p>}
                 {stationsError && <p className="panel-error">{stationsError}</p>}
                 {!stationsLoading && !stationsError && (
-                    <p className="panel-meta">Załadowane stacje: {stations.length}</p>
+                    <>
+                        <p className="panel-meta">Załadowane stacje: {stations.length}</p>
+                        {!location && <p className="panel-meta">Domyślny widok: Kraków (dane startowe)</p>}
+                        {location && typeof searchRadiusKm === "number" && (
+                            <p className="panel-meta">
+                                Filtrowanie: {searchRadiusKm} km od {location.name ?? "wybranej lokalizacji"}
+                            </p>
+                        )}
+                    </>
                 )}
 
                 {!selectedStationId && (

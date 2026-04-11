@@ -35,6 +35,14 @@ body,
     padding: 6px;
 }
 
+.search-bar input[type="text"] {
+    min-width: 220px;
+}
+
+.search-bar input[type="number"] {
+    width: 110px;
+}
+
 .search-bar button {
     padding: 6px 10px;
     cursor: pointer;

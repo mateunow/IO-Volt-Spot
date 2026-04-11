@@ -33,7 +33,6 @@ public class StationService {
     private final StationStatusSnapshotRepository snapshotRepository;
     private final OCMClient ocmClient;
 
-    @Transactional(readOnly = true)
     public List<StationMarkerResponse> getStations(Double lat, Double lon, Double radiusKm) {
         List<Station> stations;
 
@@ -62,6 +61,12 @@ public class StationService {
             double maxLat = lat + latDelta;
             double minLon = lon - lonDelta;
             double maxLon = lon + lonDelta;
+
+            try {
+                fetchStationsFromOCM(minLat, minLon, maxLat, maxLon);
+            } catch (RuntimeException ex) {
+                log.warn("OCM refresh failed for lat={}, lon={}, radiusKm={}. Returning cached DB data.", lat, lon, radiusKm, ex);
+            }
 
             stations = stationRepository.findByActiveTrueAndLatitudeBetweenAndLongitudeBetweenOrderByIdAsc(
                     minLat, maxLat, minLon, maxLon
