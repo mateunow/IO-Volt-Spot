@@ -4,7 +4,7 @@ import "leaflet/dist/leaflet.css";
 import MapView from "./components/MapView";
 import SearchBar from "./components/SearchBar";
 
-const API_BASE_URL = "http://localhost:8080";
+const API_BASE_URL = "";
 const AUTH_TOKEN_KEY = "voltspot_auth_token";
 const AUTH_USER_KEY = "voltspot_auth_user";
 

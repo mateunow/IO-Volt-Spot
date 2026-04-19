@@ -14,7 +14,7 @@ function SearchBar({ setLocation, setSearchRadiusKm, currentUser, authLoading, o
 
     try {
       const res = await fetch(
-        `http://localhost:8080/api/geocoding/search?query=${query}`
+        `api/geocoding/search?query=${query}`
       );
 
       const data = await res.json();

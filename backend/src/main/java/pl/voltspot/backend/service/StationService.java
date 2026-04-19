@@ -13,7 +13,6 @@ import pl.voltspot.backend.entity.Station;
 import pl.voltspot.backend.entity.StationStatusSnapshot;
 import pl.voltspot.backend.exceptions.BadRequestException;
 import pl.voltspot.backend.exceptions.NotFoundException;
-import pl.voltspot.backend.exceptions.NotFoundException;
 import pl.voltspot.backend.mapper.StationMapper;
 import pl.voltspot.backend.repository.StationRepository;
 import pl.voltspot.backend.repository.StationStatusSnapshotRepository;
@@ -23,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -66,7 +66,8 @@ public class StationService {
             try {
                 fetchStationsFromOCM(minLat, minLon, maxLat, maxLon);
             } catch (RuntimeException ex) {
-                log.warn("OCM refresh failed for lat={}, lon={}, radiusKm={}. Returning cached DB data.", lat, lon, radiusKm, ex);
+                log.warn("OCM refresh failed for lat={}, lon={}, radiusKm={}. Returning cached DB data.",
+                        lat, lon, radiusKm, ex);
             }
 
             stations = stationRepository.findByActiveTrueAndLatitudeBetweenAndLongitudeBetweenOrderByIdAsc(
@@ -74,8 +75,29 @@ public class StationService {
             );
         }
 
+        return toMarkerResponsesWithStatus(stations);
+    }
+
+    private List<StationMarkerResponse> toMarkerResponsesWithStatus(List<Station> stations) {
+        if (stations.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> ids = stations.stream().map(Station::getId).toList();
+        Map<Long, StationStatusSnapshot> latestByStation = snapshotRepository
+                .findLatestForStations(ids)
+                .stream()
+                .collect(Collectors.toMap(
+                        s -> s.getStation().getId(),
+                        s -> s,
+                        (a, b) -> a
+                ));
+
         return stations.stream()
-                .map(StationMapper::toMarkerResponse)
+                .map(station -> StationMapper.toMarkerResponse(
+                        station,
+                        latestByStation.get(station.getId())
+                ))
                 .toList();
     }
 
@@ -84,12 +106,9 @@ public class StationService {
         Station station = stationRepository.findById(stationId)
                 .orElseThrow(() -> new NotFoundException("Nie znaleziono stacji o id " + stationId));
 
-        StationStatusSnapshot latestStatus = snapshotRepository.findTopByStationIdOrderByRecordedAtDesc(stationId)
+        StationStatusSnapshot latestStatus = snapshotRepository
+                .findTopByStationIdOrderByRecordedAtDesc(stationId)
                 .orElse(null);
-
-        station.getConnectors().size();
-        station.getOwners().size();
-
         return StationMapper.toDetailsResponse(station, latestStatus);
     }
 
@@ -99,8 +118,10 @@ public class StationService {
             throw new NotFoundException("Nie znaleziono stacji o id " + stationId);
         }
 
-        StationStatusSnapshot snapshot = snapshotRepository.findTopByStationIdOrderByRecordedAtDesc(stationId)
-                .orElseThrow(() -> new NotFoundException("Brak snapshotu statusu dla stacji o id " + stationId));
+        StationStatusSnapshot snapshot = snapshotRepository
+                .findTopByStationIdOrderByRecordedAtDesc(stationId)
+                .orElseThrow(() -> new NotFoundException(
+                        "Brak snapshotu statusu dla stacji o id " + stationId));
 
         return StationMapper.toStatusResponse(snapshot);
     }
@@ -109,30 +130,34 @@ public class StationService {
         if (!stationRepository.existsById(stationId)) {
             throw new NotFoundException("Nie znaleziono stacji o id " + stationId);
         }
-
         stationRepository.deleteById(stationId);
     }
 
     @Transactional
-    public void fetchStationsFromOCM(Double minLat, Double minLon, Double maxLat, Double maxLon){
+    public void fetchStationsFromOCM(Double minLat, Double minLon, Double maxLat, Double maxLon) {
         List<ExternalOCMStation> externalOCMStations = ocmClient.fetchStations(minLat, minLon, maxLat, maxLon);
-        List<Station> mappedStations = externalOCMStations
+
+        List<StationMapper.StationWithSnapshot> mapped = externalOCMStations
                 .stream()
-                .map(StationMapper::toEntity)
+                .map(StationMapper::toEntityWithSnapshot)
                 .toList();
 
-        // OCM sometimes returns duplicate entries in one response; keep one by external key.
-        Map<String, Station> deduplicatedByExternalKey = new LinkedHashMap<>();
-        for (Station station : mappedStations) {
-            String key = station.getExternalSource() + "::" + station.getExternalId();
-            deduplicatedByExternalKey.put(key, station);
+        // OCM czasem zwraca duplikaty w jednej odpowiedzi – zostawiamy ostatni po kluczu zewnętrznym
+        Map<String, StationMapper.StationWithSnapshot> deduplicated = new LinkedHashMap<>();
+        for (StationMapper.StationWithSnapshot pair : mapped) {
+            String key = pair.station().getExternalSource() + "::" + pair.station().getExternalId();
+            deduplicated.put(key, pair);
         }
 
         List<Station> stationsToSave = new ArrayList<>();
-        int updatedCount = 0;
+        List<StationStatusSnapshot> snapshotsToSave = new ArrayList<>();
         int insertedCount = 0;
+        int updatedCount = 0;
 
-        for (Station incoming : deduplicatedByExternalKey.values()) {
+        for (StationMapper.StationWithSnapshot pair : deduplicated.values()) {
+            Station incoming = pair.station();
+            StationStatusSnapshot incomingSnapshot = pair.snapshot();
+
             Station stationToSave = stationRepository
                     .findByExternalSourceAndExternalId(incoming.getExternalSource(), incoming.getExternalId())
                     .map(existing -> {
@@ -141,17 +166,22 @@ public class StationService {
                     })
                     .orElse(incoming);
 
-            if (stationToSave.getId() == null) {
-                insertedCount++;
-            } else {
-                updatedCount++;
-            }
+            if (stationToSave.getId() == null) insertedCount++;
+            else updatedCount++;
 
             stationsToSave.add(stationToSave);
+            snapshotsToSave.add(incomingSnapshot);
         }
 
-        stationRepository.saveAll(stationsToSave);
-        log.info("OCM import finished: total={}, inserted={}, updated={}", stationsToSave.size(), insertedCount, updatedCount);
+        List<Station> savedStations = stationRepository.saveAll(stationsToSave);
+
+        for (int i = 0; i < savedStations.size(); i++) {
+            snapshotsToSave.get(i).setStation(savedStations.get(i));
+        }
+        snapshotRepository.saveAll(snapshotsToSave);
+
+        log.info("OCM import finished: total={}, inserted={}, updated={}, snapshots={}",
+                savedStations.size(), insertedCount, updatedCount, snapshotsToSave.size());
     }
 
     private static void applyIncomingStationData(Station target, Station source) {

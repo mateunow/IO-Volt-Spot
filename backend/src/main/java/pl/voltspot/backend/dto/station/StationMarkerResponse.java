@@ -6,6 +6,7 @@ public record StationMarkerResponse(
         Double latitude,
         Double longitude,
         String city,
-        String operatorName
+        String operatorName,
+        String markerStatus
 ) {
 }
