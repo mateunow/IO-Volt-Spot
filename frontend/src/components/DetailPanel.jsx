@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { IconClose, IconHeart, IconShare, IconPin, IconPlug } from "./Icons.jsx";
+import { IconClose, IconHeart, IconPin, IconPlug } from "./Icons.jsx";
 
 const OPERATIONAL_STATUS_OPTIONS = [
     { value: "WORKING", label: "Działa" },
@@ -108,10 +108,6 @@ function DetailPanel({
                 <button className="action primary">
                     <IconHeart />
                     Zapisz
-                </button>
-                <button className="action">
-                    <IconShare />
-                    Udostępnij
                 </button>
             </div>
 

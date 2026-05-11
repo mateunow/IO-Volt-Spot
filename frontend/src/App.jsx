@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import MapView from "./components/MapView.jsx";
 import MapControls from "./components/MapControls.jsx";
-import { Legend, Stats } from "./components/MapOverlays.jsx";
+import { Legend } from "./components/MapOverlays.jsx";
 import FloatingSearchBar from "./components/FloatingSearchBar.jsx";
 import DetailPanel from "./components/DetailPanel.jsx";
 import LoginModal from "./components/LoginModal.jsx";
+import { IconChevronLeft, IconChevronRight } from "./components/Icons.jsx";
 
 const API_BASE_URL = "";
 const AUTH_TOKEN_KEY = "voltspot_auth_token";
@@ -41,6 +42,9 @@ function App() {
     const [stationsLoading, setStationsLoading] = useState(false);
     const [stationsError, setStationsError] = useState(null);
 
+    // ─── status filter (lifted so map markers also filter) ────────────
+    const [activeStatuses, setActiveStatuses] = useState(new Set());
+
     // ─── selected station ─────────────────────────────────────────────
     const [selectedStationId, setSelectedStationId] = useState(null);
     const [stationDetails, setStationDetails] = useState(null);
@@ -63,6 +67,12 @@ function App() {
 
     const mapRef = useRef(null);
 
+    // ─── status-filtered stations for map + sidebar ───────────────────
+    const visibleStations = useMemo(() => {
+        if (activeStatuses.size === 0) return stations;
+        return stations.filter((s) => activeStatuses.has(s.markerStatus ?? "DEFAULT"));
+    }, [stations, activeStatuses]);
+
     // ─── fetch all stations on mount ──────────────────────────────────
     useEffect(() => {
         (async () => {
@@ -72,7 +82,8 @@ function App() {
                 const resp = await fetch(`${API_BASE_URL}/api/stations`);
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const data = await resp.json();
-                setStations(Array.isArray(data) ? data : []);
+                const list = Array.isArray(data) ? data : [];
+                setStations(list);
             } catch (err) {
                 console.error(err);
                 setStationsError("Nie udało się pobrać listy stacji");
@@ -178,6 +189,16 @@ function App() {
     // ─── handlers ─────────────────────────────────────────────────────
     const handleStationClick = (id) => setSelectedStationId(id);
     const handleClosePanel = () => setSelectedStationId(null);
+
+    const handleToggleStatus = (key) => {
+        setActiveStatuses((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key); else next.add(key);
+            return next;
+        });
+    };
+
+    const handleClearStatuses = () => setActiveStatuses(new Set());
 
     const handleLogin = async ({ mode, email, password, displayName }) => {
         setAuthError(null);
@@ -302,13 +323,15 @@ function App() {
         });
     };
 
+    const [sidebarOpen, setSidebarOpen] = useState(true);
+
     const detailOpen = !!selectedStationId;
     const selectedStation = stations.find((s) => s.id === selectedStationId);
 
     return (
-        <div className="app">
+        <div className={`app${sidebarOpen ? "" : " sidebar-hidden"}`}>
             <Sidebar
-                stations={stations}
+                stations={visibleStations}
                 stationsLoading={stationsLoading}
                 stationsError={stationsError}
                 selectedStationId={selectedStationId}
@@ -319,12 +342,23 @@ function App() {
                 currentUser={currentUser}
                 onLoginClick={() => setLoginModalOpen(true)}
                 onLogoutClick={handleLogout}
+                activeStatuses={activeStatuses}
+                onToggleStatus={handleToggleStatus}
+                onClearStatuses={handleClearStatuses}
+                onToggleSidebar={() => setSidebarOpen((v) => !v)}
             />
 
             <main className={`map-area${detailOpen ? " detail-open" : ""}`}>
+                <button
+                    className="sidebar-toggle-btn"
+                    onClick={() => setSidebarOpen((v) => !v)}
+                    title={sidebarOpen ? "Zwiń panel" : "Rozwiń panel"}
+                >
+                    {sidebarOpen ? <IconChevronLeft /> : <IconChevronRight />}
+                </button>
                 <MapView
                     location={location}
-                    stations={stations}
+                    stations={visibleStations}
                     selectedStationId={selectedStationId}
                     onStationClick={handleStationClick}
                     onMapReady={(m) => { mapRef.current = m; }}
@@ -335,6 +369,7 @@ function App() {
                         setLocation={setLocation}
                         searchRadiusKm={searchRadiusKm}
                         setSearchRadiusKm={setSearchRadiusKm}
+                        onStationClick={handleStationClick}
                     />
                 </div>
 
@@ -345,7 +380,6 @@ function App() {
                 />
 
                 <Legend />
-                <Stats stations={stations} />
             </main>
 
             <DetailPanel

@@ -55,6 +55,10 @@ button { font-family: inherit; cursor: pointer; }
     grid-template-columns: 360px 1fr;
     height: 100vh;
     width: 100vw;
+    transition: grid-template-columns .28s cubic-bezier(.2,.7,.2,1);
+}
+.app.sidebar-hidden {
+    grid-template-columns: 0px 1fr;
 }
 
 /* ============ SIDEBAR ============ */
@@ -67,6 +71,7 @@ button { font-family: inherit; cursor: pointer; }
     overflow: hidden;
     position: relative;
     z-index: 500;
+    min-width: 0;
 }
 
 .brand {
@@ -99,8 +104,11 @@ button { font-family: inherit; cursor: pointer; }
 }
 .brand-sub { color: var(--muted-2); font-size: 11px; font-family: var(--mono); }
 
-.user-chip {
+.user-chip-wrap {
     margin-left: auto;
+    position: relative;
+}
+.user-chip {
     display: flex; align-items: center; gap: 8px;
     padding: 5px 10px 5px 5px;
     background: var(--panel-dark-2);
@@ -110,7 +118,45 @@ button { font-family: inherit; cursor: pointer; }
     cursor: pointer;
     transition: background .15s;
 }
+.user-chip-wrap > .user-chip { margin-left: 0; }
+.sidebar .brand > .user-chip { margin-left: auto; }
 .user-chip:hover { background: #1F232B; }
+
+.profile-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: var(--panel-dark-2);
+    border: 1px solid var(--line-2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    min-width: 170px;
+    z-index: 600;
+}
+.profile-menu-name {
+    font-size: 13px; font-weight: 600;
+    color: #E8EAED;
+    margin-bottom: 2px;
+}
+.profile-menu-email {
+    font-size: 11px; color: var(--muted-2);
+    font-family: var(--mono);
+    margin-bottom: 10px;
+    word-break: break-all;
+}
+.profile-menu-logout {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--line-2);
+    color: #F87171;
+    border-radius: 7px;
+    padding: 6px 0;
+    font-size: 12px;
+    font-weight: 500;
+    transition: background .15s;
+}
+.profile-menu-logout:hover { background: rgba(248,113,113,.1); }
 .avatar {
     width: 22px; height: 22px; border-radius: 50%;
     background: linear-gradient(135deg, oklch(0.78 0.17 140), oklch(0.65 0.18 180));
@@ -314,7 +360,28 @@ button { font-family: inherit; cursor: pointer; }
     font-family: var(--mono); font-size: 10px;
     color: var(--muted);
     background: var(--panel-dark);
+    flex-shrink: 0;
 }
+/* Sidebar toggle — zawsze na lewym brzegu mapy, środek ekranu */
+.sidebar-toggle-btn {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    z-index: 600;
+    background: var(--panel-dark);
+    border: 1px solid #000;
+    border-left: none;
+    color: #E8EAED;
+    width: 20px; height: 48px;
+    border-radius: 0 8px 8px 0;
+    display: grid; place-items: center;
+    box-shadow: var(--shadow-md);
+    transition: background .15s;
+    cursor: pointer;
+}
+.sidebar-toggle-btn:hover { background: #1F232B; }
+.sidebar-toggle-btn svg { width: 14px; height: 14px; }
 .sb-footer .live { display: inline-flex; align-items: center; gap: 6px; }
 .sb-footer .live .dot {
     width: 6px; height: 6px; border-radius: 50%;
@@ -376,6 +443,8 @@ button { font-family: inherit; cursor: pointer; }
 .route-btn:hover { background: #2A2E36; }
 .route-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.route-search-wrap { position: relative; }
+
 /* Geocoding suggestions */
 .geo-suggestions {
     position: absolute;
@@ -397,6 +466,8 @@ button { font-family: inherit; cursor: pointer; }
 }
 .geo-suggestion:last-child { border-bottom: none; }
 .geo-suggestion:hover { background: var(--bg); }
+.geo-suggestion-name { font-weight: 500; color: var(--ink); }
+.geo-suggestion-meta { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 2px; }
 
 /* Right map controls */
 .map-controls {
@@ -576,7 +647,7 @@ button { font-family: inherit; cursor: pointer; }
 .status-pill svg { width: 12px; height: 12px; }
 
 .detail-actions {
-    display: grid; grid-template-columns: 1fr 1fr;
+    display: grid; grid-template-columns: 1fr;
     gap: 8px;
     padding: 14px 20px;
     border-bottom: 1px solid var(--line);

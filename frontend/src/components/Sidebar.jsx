@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import StationCard from "./StationCard.jsx";
-import { IconSearch, IconBolt } from "./Icons.jsx";
+import { IconBolt } from "./Icons.jsx";
 import { STATUS_COLORS } from "./markerIcons.js";
 
 const RADIUS_OPTIONS = [2, 10, 25, 50];
@@ -36,28 +36,26 @@ function Sidebar({
     currentUser,
     onLoginClick,
     onLogoutClick,
+    activeStatuses,
+    onToggleStatus,
+    onClearStatuses,
+    onToggleSidebar,
 }) {
-    const [query, setQuery] = useState("");
-    const [activeStatuses, setActiveStatuses] = useState(new Set());
+    const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const profileRef = useRef(null);
 
-    const toggleStatus = (key) => {
-        setActiveStatuses((prev) => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key); else next.add(key);
-            return next;
-        });
-    };
+    useEffect(() => {
+        const handler = (e) => {
+            if (profileRef.current && !profileRef.current.contains(e.target)) {
+                setShowProfileMenu(false);
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
 
-    const filteredStations = useMemo(() => {
-        const q = query.trim().toLowerCase();
+    const sortedStations = useMemo(() => {
         return stations
-            .filter((s) => {
-                if (activeStatuses.size > 0 && !activeStatuses.has(s.markerStatus ?? "DEFAULT")) return false;
-                if (!q) return true;
-                return [
-                    s.name, s.operatorName, s.city, s.addressLine,
-                ].some((field) => (field ?? "").toLowerCase().includes(q));
-            })
             .map((s) => {
                 const lat = Number(s.latitude);
                 const lon = Number(s.longitude);
@@ -72,22 +70,7 @@ function Sidebar({
                 if (b._distance != null) return 1;
                 return 0;
             });
-    }, [stations, query, activeStatuses, location]);
-
-    const totalStatus = useMemo(() => {
-        let available = 0, occupied = 0, total = 0;
-        for (const s of stations) {
-            const ls = s.latestStatus ?? {};
-            available += ls.availableCount ?? 0;
-            occupied  += ls.occupiedCount ?? 0;
-            total += (ls.availableCount ?? 0)
-                + (ls.occupiedCount ?? 0)
-                + (ls.reservedCount ?? 0)
-                + (ls.outOfServiceCount ?? 0)
-                + (ls.unknownCount ?? 0);
-        }
-        return { available, occupied, total };
-    }, [stations]);
+    }, [stations, location]);
 
     return (
         <aside className="sidebar">
@@ -100,9 +83,27 @@ function Sidebar({
                     <div className="brand-sub">dane na żywo</div>
                 </div>
                 {currentUser ? (
-                    <div className="user-chip" onClick={onLogoutClick} title="Wyloguj">
-                        <div className="avatar">{(currentUser.displayName ?? "?")[0]?.toUpperCase()}</div>
-                        <span>{currentUser.displayName ?? "Użytkownik"}</span>
+                    <div className="user-chip-wrap" ref={profileRef}>
+                        <div
+                            className="user-chip"
+                            onClick={() => setShowProfileMenu((v) => !v)}
+                            title="Konto"
+                        >
+                            <div className="avatar">{(currentUser.displayName ?? "?")[0]?.toUpperCase()}</div>
+                            <span>{currentUser.displayName ?? "Użytkownik"}</span>
+                        </div>
+                        {showProfileMenu && (
+                            <div className="profile-menu">
+                                <div className="profile-menu-name">{currentUser.displayName ?? "Użytkownik"}</div>
+                                <div className="profile-menu-email">{currentUser.email ?? ""}</div>
+                                <button
+                                    className="profile-menu-logout"
+                                    onClick={() => { setShowProfileMenu(false); onLogoutClick(); }}
+                                >
+                                    Wyloguj
+                                </button>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="user-chip" onClick={onLoginClick}>
@@ -110,18 +111,6 @@ function Sidebar({
                         <span>Zaloguj</span>
                     </div>
                 )}
-            </div>
-
-            <div className="search-wrap">
-                <div className="search">
-                    <IconSearch />
-                    <input
-                        type="text"
-                        placeholder="Szukaj stacji, operatora, miasta…"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                    />
-                </div>
             </div>
 
             <div className="radius-row">
@@ -141,7 +130,19 @@ function Sidebar({
             <div className="filters-section">
                 <div className="filters-header">
                     <span>Filtry statusu</span>
-                    <span className="count">{activeStatuses.size > 0 ? `${activeStatuses.size} aktywnych` : "wszystkie"}</span>
+                    {activeStatuses.size > 0 && (
+                        <span
+                            className="count"
+                            style={{ cursor: "pointer" }}
+                            onClick={onClearStatuses}
+                            title="Wyczyść filtry"
+                        >
+                            {activeStatuses.size} aktywnych · wyczyść
+                        </span>
+                    )}
+                    {activeStatuses.size === 0 && (
+                        <span className="count">wszystkie</span>
+                    )}
                 </div>
                 <div className="filter-group">
                     <div className="f-chips">
@@ -149,7 +150,7 @@ function Sidebar({
                             <button
                                 key={f.key}
                                 className={`f-chip${activeStatuses.has(f.key) ? " active" : ""}`}
-                                onClick={() => toggleStatus(f.key)}
+                                onClick={() => onToggleStatus(f.key)}
                             >
                                 <span className="dot" style={{ background: f.color }} />
                                 {f.label}
@@ -163,16 +164,18 @@ function Sidebar({
                 <span className="list-title">
                     {location ? "Stacje w pobliżu" : "Wszystkie stacje"}
                 </span>
-                <span className="list-meta">{filteredStations.length}</span>
+                <span className="list-meta">{sortedStations.length}</span>
             </div>
 
             <div className="station-list">
                 {stationsLoading && <div className="empty-state">Ładowanie stacji…</div>}
-                {stationsError && <div className="empty-state" style={{ color: "#F87171" }}>{stationsError}</div>}
-                {!stationsLoading && !stationsError && filteredStations.length === 0 && (
+                {stationsError && sortedStations.length === 0 && (
+                    <div className="empty-state" style={{ color: "#F87171" }}>{stationsError}</div>
+                )}
+                {!stationsLoading && sortedStations.length === 0 && !stationsError && (
                     <div className="empty-state">Brak stacji do wyświetlenia</div>
                 )}
-                {filteredStations.map((s) => (
+                {sortedStations.map((s) => (
                     <StationCard
                         key={s.id}
                         station={s}
@@ -185,7 +188,6 @@ function Sidebar({
 
             <div className="sb-footer">
                 <div className="live"><span className="dot" /> Dane na żywo · {stations.length} stacji</div>
-                <div>{totalStatus.available}/{totalStatus.total || "-"} dost.</div>
             </div>
         </aside>
     );
