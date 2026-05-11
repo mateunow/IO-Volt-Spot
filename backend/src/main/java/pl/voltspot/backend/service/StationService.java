@@ -1,7 +1,6 @@
 package pl.voltspot.backend.service;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pl.voltspot.backend.client.OCMClient;
@@ -9,6 +8,7 @@ import pl.voltspot.backend.dto.external.ExternalOCMStation;
 import pl.voltspot.backend.dto.station.StationDetailsResponse;
 import pl.voltspot.backend.dto.station.StationMarkerResponse;
 import pl.voltspot.backend.dto.station.StationStatusSnapshotResponse;
+import pl.voltspot.backend.dto.station.UpdateStationRequest;
 import pl.voltspot.backend.entity.Station;
 import pl.voltspot.backend.entity.StationStatusSnapshot;
 import pl.voltspot.backend.exceptions.BadRequestException;
@@ -24,11 +24,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Service
 @RequiredArgsConstructor
 @Transactional
-@Slf4j
 public class StationService {
+
+    private static final Logger log = LoggerFactory.getLogger(StationService.class);
 
     private final StationRepository stationRepository;
     private final StationStatusSnapshotRepository snapshotRepository;
@@ -124,6 +128,30 @@ public class StationService {
                         "Brak snapshotu statusu dla stacji o id " + stationId));
 
         return StationMapper.toStatusResponse(snapshot);
+    }
+
+    public StationDetailsResponse updateStation(Long stationId, UpdateStationRequest request) {
+        Station station = stationRepository.findById(stationId)
+                .orElseThrow(() -> new NotFoundException("Nie znaleziono stacji o id " + stationId));
+
+        station.setName(request.name());
+        station.setLatitude(request.latitude());
+        station.setLongitude(request.longitude());
+        station.setAddressLine(request.addressLine());
+        station.setCity(request.city());
+        station.setCountry(request.country());
+        station.setOperatorName(request.operatorName());
+        station.setOpeningHours(request.openingHours());
+        station.setAccessType(request.accessType());
+        station.setActive(request.active());
+        station.setLastSyncedAt(Instant.now());
+
+        Station savedStation = stationRepository.save(station);
+        StationStatusSnapshot latestStatus = snapshotRepository
+                .findTopByStationIdOrderByRecordedAtDesc(stationId)
+                .orElse(null);
+
+        return StationMapper.toDetailsResponse(savedStation, latestStatus);
     }
 
     public void deleteStationById(Long stationId) {

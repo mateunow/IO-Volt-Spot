@@ -1,4 +1,4 @@
-map-wrapper {
+.map-wrapper {
     position: fixed;
     top: 0;
     left: 0;
@@ -110,6 +110,101 @@ body,
     background: #1f7a4d;
     color: #ffffff;
     border-color: #1f7a4d;
+}
+
+.danger-button {
+    background: #a32626;
+    color: #ffffff;
+    border-color: #a32626;
+    margin-top: 8px;
+}
+
+.station-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0;
+}
+.station-admin-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.station-edit-section {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid #e3e3e3;
+    border-radius: 10px;
+    background: #fafafa;
+}
+
+.station-edit-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.station-edit-field,
+.station-edit-checkbox {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.95rem;
+}
+
+.station-edit-checkbox {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+}
+
+.station-edit-field input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px;
+    border: 1px solid #cfcfcf;
+    border-radius: 7px;
+}
+
+.station-edit-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.favorite-button {
+    border: 1px solid #c8c8c8;
+    border-radius: 7px;
+    background: #ffffff;
+    color: #ff9800;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.favorite-button:hover:not(:disabled) {
+    background: #fff3e0;
+    border-color: #ff9800;
+}
+
+.favorite-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.favorite-button.active {
+    background: #ff9800;
+    color: #ffffff;
+    border-color: #ff9800;
+}
+
+.favorite-button.active:hover:not(:disabled) {
+    background: #f57c00;
+    border-color: #f57c00;
 }
 
 .danger-button {
@@ -309,6 +404,10 @@ body,
 
     .search-bar input {
         flex: 1;
+    }
+
+    .station-edit-grid {
+        grid-template-columns: 1fr;
     }
 }
 

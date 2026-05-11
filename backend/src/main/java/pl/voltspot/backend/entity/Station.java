@@ -80,6 +80,9 @@ public class Station {
     @OneToMany(mappedBy = "station", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<StationOwner> owners = new ArrayList<>();
 
+    @OneToMany(mappedBy = "station", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<UserFavorite> favorites = new ArrayList<>();
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();

@@ -49,6 +49,9 @@ public class User {
     @OneToMany(mappedBy = "owner")
     private List<StationOwner> stationAssignments = new ArrayList<>();
 
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<UserFavorite> favorites = new ArrayList<>();
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();

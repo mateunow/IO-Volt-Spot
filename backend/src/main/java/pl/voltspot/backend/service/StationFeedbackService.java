@@ -56,15 +56,18 @@ public class StationFeedbackService {
         if (currentUser == null) {
             throw new UnauthorizedException("Wymagane logowanie");
         }
-        if (currentUser.role() != UserRole.ADMIN) {
-            throw new ForbiddenException("Brak uprawnień do usunięcia opinii");
-        }
-
         StationFeedback feedback = feedbackRepository.findById(feedbackId)
                 .orElseThrow(() -> new NotFoundException("Nie znaleziono opinii o id " + feedbackId));
 
         if (!feedback.getStation().getId().equals(stationId)) {
             throw new NotFoundException("Nie znaleziono opinii o id " + feedbackId + " dla stacji o id " + stationId);
+        }
+
+        boolean isAdmin = currentUser.role() == UserRole.ADMIN;
+        boolean isOwner = feedback.getUser() != null && feedback.getUser().getId().equals(currentUser.id());
+
+        if (!isAdmin && !isOwner) {
+            throw new ForbiddenException("Brak uprawnień do usunięcia opinii");
         }
 
         feedbackRepository.delete(feedback);

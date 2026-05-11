@@ -10,7 +10,7 @@ import { IconChevronLeft, IconChevronRight } from "./components/Icons.jsx";
 
 const API_BASE_URL = "";
 const AUTH_TOKEN_KEY = "voltspot_auth_token";
-const AUTH_USER_KEY  = "voltspot_auth_user";
+const AUTH_USER_KEY = "voltspot_auth_user";
 
 function haversineKm(lat1, lon1, lat2, lon2) {
     const toRad = (v) => (v * Math.PI) / 180;
@@ -19,8 +19,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
     const dLon = toRad(lon2 - lon1);
     const a =
         Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-        Math.sin(dLon / 2) ** 2;
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
     return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -31,21 +30,22 @@ function buildAuthHeaders(token, extra = {}) {
 function readStoredUser() {
     const stored = localStorage.getItem(AUTH_USER_KEY);
     if (!stored) return null;
-    try { return JSON.parse(stored); } catch { return null; }
+    try {
+        return JSON.parse(stored);
+    } catch {
+        return null;
+    }
 }
 
 function App() {
-    // ─── stations / location state ────────────────────────────────────
     const [location, setLocation] = useState(null);
     const [searchRadiusKm, setSearchRadiusKm] = useState(null);
     const [stations, setStations] = useState([]);
     const [stationsLoading, setStationsLoading] = useState(false);
     const [stationsError, setStationsError] = useState(null);
 
-    // ─── status filter (lifted so map markers also filter) ────────────
     const [activeStatuses, setActiveStatuses] = useState(new Set());
 
-    // ─── selected station ─────────────────────────────────────────────
     const [selectedStationId, setSelectedStationId] = useState(null);
     const [stationDetails, setStationDetails] = useState(null);
     const [detailsLoading, setDetailsLoading] = useState(false);
@@ -55,37 +55,42 @@ function App() {
     const [feedbacksLoading, setFeedbacksLoading] = useState(false);
     const [feedbacksError, setFeedbacksError] = useState(null);
 
-    // ─── auth ─────────────────────────────────────────────────────────
     const [currentUser, setCurrentUser] = useState(() => readStoredUser());
     const [authToken, setAuthToken] = useState(() => localStorage.getItem(AUTH_TOKEN_KEY) || "");
     const [loginModalOpen, setLoginModalOpen] = useState(false);
     const [authError, setAuthError] = useState(null);
 
-    // ─── feedback form ────────────────────────────────────────────────
     const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
     const [feedbackActionMessage, setFeedbackActionMessage] = useState(null);
 
+    const [isFavorited, setIsFavorited] = useState(false);
+    const [favoritesLoading, setFavoritesLoading] = useState(false);
+    const [favoritesList, setFavoritesList] = useState([]);
+    const [favoritesListLoading, setFavoritesListLoading] = useState(false);
+
+    const [stationEditMode, setStationEditMode] = useState(false);
+    const [stationEditForm, setStationEditForm] = useState(null);
+    const [stationEditLoading, setStationEditLoading] = useState(false);
+    const [stationEditMessage, setStationEditMessage] = useState(null);
+
     const mapRef = useRef(null);
 
-    // ─── status-filtered stations for map + sidebar ───────────────────
     const visibleStations = useMemo(() => {
         if (activeStatuses.size === 0) return stations;
-        return stations.filter((s) => activeStatuses.has(s.markerStatus ?? "DEFAULT"));
+        return stations.filter((station) => activeStatuses.has(station.markerStatus ?? "DEFAULT"));
     }, [stations, activeStatuses]);
 
-    // ─── fetch all stations on mount ──────────────────────────────────
     useEffect(() => {
         (async () => {
             setStationsLoading(true);
             setStationsError(null);
             try {
-                const resp = await fetch(`${API_BASE_URL}/api/stations`);
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const data = await resp.json();
-                const list = Array.isArray(data) ? data : [];
-                setStations(list);
-            } catch (err) {
-                console.error(err);
+                const response = await fetch(`${API_BASE_URL}/api/stations`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                setStations(Array.isArray(data) ? data : []);
+            } catch (error) {
+                console.error(error);
                 setStationsError("Nie udało się pobrać listy stacji");
             } finally {
                 setStationsLoading(false);
@@ -93,7 +98,6 @@ function App() {
         })();
     }, []);
 
-    // ─── refresh auth user when token changes ─────────────────────────
     useEffect(() => {
         if (!authToken) {
             setCurrentUser(null);
@@ -101,9 +105,12 @@ function App() {
             localStorage.removeItem(AUTH_USER_KEY);
             return;
         }
+
         (async () => {
             try {
-                const resp = await fetch(`${API_BASE_URL}/api/auth/me`, { headers: buildAuthHeaders(authToken) });
+                const resp = await fetch(`${API_BASE_URL}/api/auth/me`, {
+                    headers: buildAuthHeaders(authToken),
+                });
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const user = await resp.json();
                 setCurrentUser(user);
@@ -116,7 +123,6 @@ function App() {
         })();
     }, [authToken]);
 
-    // ─── re-fetch stations by location + radius ───────────────────────
     useEffect(() => {
         if (!location) return;
         if (typeof searchRadiusKm !== "number" || searchRadiusKm <= 0) return;
@@ -131,12 +137,14 @@ function App() {
                     lon: String(location.lon),
                     radiusKm: String(searchRadiusKm),
                 });
-                const resp = await fetch(`${API_BASE_URL}/api/stations?${params}`);
+                const resp = await fetch(
+                    `${API_BASE_URL}/api/stations?${params}`,
+                );
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const data = await resp.json();
                 setStations(Array.isArray(data) ? data : []);
-            } catch (err) {
-                console.error(err);
+            } catch (error) {
+                console.error(error);
                 setStationsError("Nie udało się pobrać stacji dla podanej lokalizacji");
             } finally {
                 setStationsLoading(false);
@@ -144,28 +152,42 @@ function App() {
         })();
     }, [location, searchRadiusKm]);
 
-    // ─── fetch details + feedback when station selected ───────────────
     useEffect(() => {
         if (!selectedStationId) {
             setStationDetails(null);
             setStationFeedbacks([]);
             setFeedbackActionMessage(null);
+            setIsFavorited(false);
+            setStationEditMode(false);
+            setStationEditForm(null);
+            setStationEditMessage(null);
             return;
         }
+
         (async () => {
-            setDetailsLoading(true); setDetailsError(null);
-            setFeedbacksLoading(true); setFeedbacksError(null);
+            setDetailsLoading(true);
+            setDetailsError(null);
+            setFeedbacksLoading(true);
+            setFeedbacksError(null);
             try {
-                const [dResp, fResp] = await Promise.all([
+                const [detailsResponse, feedbackResponse] = await Promise.all([
                     fetch(`${API_BASE_URL}/api/stations/${selectedStationId}`),
                     fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/feedback`),
                 ]);
-                if (!dResp.ok) throw new Error(`HTTP ${dResp.status}`);
-                setStationDetails(await dResp.json());
-                if (!fResp.ok) throw new Error(`HTTP ${fResp.status}`);
-                setStationFeedbacks(await fResp.json());
-            } catch (err) {
-                console.error(err);
+                if (!detailsResponse.ok) throw new Error(`HTTP ${detailsResponse.status}`);
+                setStationDetails(await detailsResponse.json());
+                if (!feedbackResponse.ok) throw new Error(`HTTP ${feedbackResponse.status}`);
+                setStationFeedbacks(await feedbackResponse.json());
+
+                const favoriteResponse = authToken
+                    ? await fetch(`${API_BASE_URL}/api/favorites/${selectedStationId}/is-favorited`, {
+                          headers: buildAuthHeaders(authToken),
+                      })
+                    : await fetch(`${API_BASE_URL}/api/favorites/${selectedStationId}/is-favorited`);
+
+                setIsFavorited(favoriteResponse.ok ? Boolean(await favoriteResponse.json()) : false);
+            } catch (error) {
+                console.error(error);
                 setDetailsError("Nie udało się pobrać szczegółów stacji");
                 setFeedbacksError("Nie udało się pobrać opinii");
             } finally {
@@ -173,27 +195,92 @@ function App() {
                 setFeedbacksLoading(false);
             }
         })();
-    }, [selectedStationId]);
+    }, [selectedStationId, authToken]);
 
-    // ─── notify map to resize when panel opens/closes ─────────────────
+    useEffect(() => {
+        if (!stationDetails) {
+            setStationEditForm(null);
+            return;
+        }
+
+        setStationEditForm({
+            name: stationDetails.name ?? "",
+            latitude: stationDetails.latitude ?? "",
+            longitude: stationDetails.longitude ?? "",
+            addressLine: stationDetails.addressLine ?? "",
+            city: stationDetails.city ?? "",
+            country: stationDetails.country ?? "",
+            operatorName: stationDetails.operatorName ?? "",
+            openingHours: stationDetails.openingHours ?? "",
+            accessType: stationDetails.accessType ?? "",
+            active: Boolean(stationDetails.active),
+        });
+        setStationEditMode(false);
+        setStationEditMessage(null);
+    }, [stationDetails]);
+
     useEffect(() => {
         window.dispatchEvent(new Event("voltspot:resize-map"));
     }, [selectedStationId]);
 
     const distanceKm = useMemo(() => {
         if (!location || !stationDetails) return null;
-        if (typeof stationDetails.latitude !== "number" || typeof stationDetails.longitude !== "number") return null;
+        if (typeof stationDetails.latitude !== "number" || typeof stationDetails.longitude !== "number") {
+            return null;
+        }
         return haversineKm(location.lat, location.lon, stationDetails.latitude, stationDetails.longitude);
     }, [location, stationDetails]);
 
-    // ─── handlers ─────────────────────────────────────────────────────
+    async function loadUserFavorites() {
+        if (!authToken) {
+            setFavoritesList([]);
+            return;
+        }
+
+        setFavoritesListLoading(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/favorites`, {
+                headers: buildAuthHeaders(authToken),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            setFavoritesList(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error(error);
+            setFavoritesList([]);
+        } finally {
+            setFavoritesListLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        loadUserFavorites();
+    }, [authToken]);
+
+    const refreshFeedbacks = async (stationId) => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/stations/${stationId}/feedback`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            setStationFeedbacks(await response.json());
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     const handleStationClick = (id) => setSelectedStationId(id);
+    const handleFavoriteClick = (favorite) =>
+        setSelectedStationId(favorite.stationId);
     const handleClosePanel = () => setSelectedStationId(null);
 
     const handleToggleStatus = (key) => {
         setActiveStatuses((prev) => {
             const next = new Set(prev);
-            if (next.has(key)) next.delete(key); else next.add(key);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
             return next;
         });
     };
@@ -203,10 +290,12 @@ function App() {
     const handleLogin = async ({ mode, email, password, displayName }) => {
         setAuthError(null);
         try {
-            const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/register";
-            const payload = mode === "login"
-                ? { email, password }
-                : { email, password, displayName };
+            const endpoint =
+                mode === "login" ? "/api/auth/login" : "/api/auth/register";
+            const payload =
+                mode === "login"
+                    ? { email, password }
+                    : { email, password, displayName };
 
             const resp = await fetch(`${API_BASE_URL}${endpoint}`, {
                 method: "POST",
@@ -215,7 +304,7 @@ function App() {
             });
             if (!resp.ok) {
                 const err = await resp.json().catch(() => null);
-                throw new Error(err?.message ?? "Nie udało się zalogować");
+                throw new Error(errorBody?.message ?? "Nie udało się zalogować");
             }
             const data = await resp.json();
             setAuthToken(data.token);
@@ -242,33 +331,32 @@ function App() {
         }
     };
 
-    const refreshFeedbacks = async (stationId) => {
-        try {
-            const resp = await fetch(`${API_BASE_URL}/api/stations/${stationId}/feedback`);
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            setStationFeedbacks(await resp.json());
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
     const handleSubmitFeedback = async (status, comment) => {
         if (!authToken || !selectedStationId) return;
+
         setFeedbackSubmitting(true);
         setFeedbackActionMessage(null);
         try {
-            const resp = await fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/feedback`, {
-                method: "POST",
-                headers: buildAuthHeaders(authToken, { "Content-Type": "application/json" }),
-                body: JSON.stringify({
-                    operationalStatus: status,
-                    comment: (comment ?? "").trim() || null,
-                }),
-            });
+            const resp = await fetch(
+                `${API_BASE_URL}/api/stations/${selectedStationId}/feedback`,
+                {
+                    method: "POST",
+                    headers: buildAuthHeaders(authToken, {
+                        "Content-Type": "application/json",
+                    }),
+                    body: JSON.stringify({
+                        operationalStatus: status,
+                        comment: (comment ?? "").trim() || null,
+                    }),
+                },
+            );
             if (!resp.ok) {
                 const err = await resp.json().catch(() => null);
-                throw new Error(err?.message ?? "Nie udało się zapisać zgłoszenia");
+                throw new Error(
+                    errorBody?.message ?? "Nie udało się zapisać zgłoszenia",
+                );
             }
+
             setFeedbackActionMessage("Zgłoszenie zapisane");
             await refreshFeedbacks(selectedStationId);
         } catch (err) {
@@ -281,13 +369,20 @@ function App() {
     const handleDeleteStation = async () => {
         if (!currentUser || currentUser.role !== "ADMIN" || !selectedStationId) return;
         if (!window.confirm("Na pewno usunąć tę stację?")) return;
+
         try {
-            const resp = await fetch(`${API_BASE_URL}/api/stations/${selectedStationId}`, {
-                method: "DELETE",
-                headers: buildAuthHeaders(authToken),
-            });
-            if (!resp.ok && resp.status !== 204) throw new Error("Nie udało się usunąć stacji");
-            setStations((curr) => curr.filter((s) => s.id !== selectedStationId));
+            const resp = await fetch(
+                `${API_BASE_URL}/api/stations/${selectedStationId}`,
+                {
+                    method: "DELETE",
+                    headers: buildAuthHeaders(authToken),
+                },
+            );
+            if (!resp.ok && resp.status !== 204)
+                throw new Error("Nie udało się usunąć stacji");
+            setStations((curr) =>
+                curr.filter((s) => s.id !== selectedStationId),
+            );
             handleClosePanel();
         } catch (err) {
             setFeedbackActionMessage(err.message);
@@ -295,23 +390,196 @@ function App() {
     };
 
     const handleDeleteFeedback = async (feedbackId) => {
-        if (!currentUser || currentUser.role !== "ADMIN" || !selectedStationId) return;
+        if (!currentUser || !selectedStationId) return;
+
+        const feedback = stationFeedbacks.find(
+            (item) => item.id === feedbackId,
+        );
+        const isOwner =
+            feedback && String(feedback.userId) === String(currentUser.id);
+        const isAdmin = currentUser.role === "ADMIN";
+        if (!isOwner && !isAdmin) return;
+
         try {
             const resp = await fetch(
                 `${API_BASE_URL}/api/stations/${selectedStationId}/feedback/${feedbackId}`,
-                { method: "DELETE", headers: buildAuthHeaders(authToken) }
+                { method: "DELETE", headers: buildAuthHeaders(authToken) },
             );
-            if (!resp.ok && resp.status !== 204) throw new Error("Nie udało się usunąć opinii");
+            if (!resp.ok && resp.status !== 204)
+                throw new Error("Nie udało się usunąć opinii");
             await refreshFeedbacks(selectedStationId);
         } catch (err) {
             setFeedbackActionMessage(err.message);
         }
     };
 
-    // ─── map controls ─────────────────────────────────────────────────
-    const handleZoomIn  = () => mapRef.current?.zoomIn();
+    const handleAddFavorite = async () => {
+        if (!authToken || !selectedStationId) return;
+
+        setFavoritesLoading(true);
+        try {
+            const resp = await fetch(
+                `${API_BASE_URL}/api/favorites/${selectedStationId}`,
+                {
+                    method: "POST",
+                    headers: buildAuthHeaders(authToken),
+                },
+            );
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => null);
+                throw new Error(
+                    err?.message ?? "Nie udało się dodać do ulubionych",
+                );
+            }
+
+            setIsFavorited(true);
+            await loadUserFavorites();
+        } catch (err) {
+            setFeedbackActionMessage(err.message);
+        } finally {
+            setFavoritesLoading(false);
+        }
+    };
+
+    const handleRemoveFavorite = async () => {
+        if (!authToken || !selectedStationId) return;
+
+        setFavoritesLoading(true);
+        try {
+            const resp = await fetch(
+                `${API_BASE_URL}/api/favorites/${selectedStationId}`,
+                {
+                    method: "DELETE",
+                    headers: buildAuthHeaders(authToken),
+                },
+            );
+
+            if (!resp.ok && resp.status !== 204) {
+                throw new Error("Nie udało się usunąć z ulubionych");
+            }
+
+            setIsFavorited(false);
+            await loadUserFavorites();
+        } catch (err) {
+            setFeedbackActionMessage(err.message);
+        } finally {
+            setFavoritesLoading(false);
+        }
+    };
+
+    const handleStartStationEdit = () => {
+        if (!stationEditForm) return;
+        setStationEditMode(true);
+        setStationEditMessage(null);
+    };
+
+    const handleCancelStationEdit = () => {
+        setStationEditMode(false);
+        setStationEditMessage(null);
+        if (stationDetails) {
+            setStationEditForm({
+                name: stationDetails.name ?? "",
+                latitude: stationDetails.latitude ?? "",
+                longitude: stationDetails.longitude ?? "",
+                addressLine: stationDetails.addressLine ?? "",
+                city: stationDetails.city ?? "",
+                country: stationDetails.country ?? "",
+                operatorName: stationDetails.operatorName ?? "",
+                openingHours: stationDetails.openingHours ?? "",
+                accessType: stationDetails.accessType ?? "",
+                active: Boolean(stationDetails.active),
+            });
+        }
+    };
+
+    const handleStationEditChange = (field, value) => {
+        setStationEditForm((currentForm) => ({
+            ...(currentForm ?? {}),
+            [field]: value,
+        }));
+    };
+
+    const handleSaveStationEdit = async () => {
+        if (
+            !currentUser ||
+            currentUser.role !== "ADMIN" ||
+            !selectedStationId ||
+            !stationEditForm
+        ) {
+            return;
+        }
+
+        const latitude = Number(stationEditForm.latitude);
+        const longitude = Number(stationEditForm.longitude);
+        if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+            setStationEditMessage("Podaj poprawne współrzędne stacji");
+            return;
+        }
+
+        setStationEditLoading(true);
+        setStationEditMessage(null);
+
+        try {
+            const payload = {
+                name: stationEditForm.name.trim(),
+                latitude,
+                longitude,
+                addressLine: stationEditForm.addressLine.trim() || null,
+                city: stationEditForm.city.trim() || null,
+                country: stationEditForm.country.trim() || null,
+                operatorName: stationEditForm.operatorName.trim() || null,
+                openingHours: stationEditForm.openingHours.trim() || null,
+                accessType: stationEditForm.accessType.trim() || null,
+                active: Boolean(stationEditForm.active),
+            };
+
+            const resp = await fetch(
+                `${API_BASE_URL}/api/stations/${selectedStationId}`,
+                {
+                    method: "PUT",
+                    headers: buildAuthHeaders(authToken, {
+                        "Content-Type": "application/json",
+                    }),
+                    body: JSON.stringify(payload),
+                },
+            );
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => null);
+                throw new Error(
+                    err?.message ?? "Nie udało się zapisać zmian stacji",
+                );
+            }
+
+            const updatedStation = await resp.json();
+            setStationDetails(updatedStation);
+            setStations((currentStations) =>
+                currentStations.map((station) =>
+                    station.id === updatedStation.id
+                        ? {
+                              ...station,
+                              name: updatedStation.name,
+                              latitude: updatedStation.latitude,
+                              longitude: updatedStation.longitude,
+                              city: updatedStation.city,
+                              operatorName: updatedStation.operatorName,
+                          }
+                        : station,
+                ),
+            );
+            setStationEditMode(false);
+            setStationEditMessage("Zapisano zmiany stacji");
+        } catch (err) {
+            setStationEditMessage(err.message);
+        } finally {
+            setStationEditLoading(false);
+        }
+    };
+
+    const handleZoomIn = () => mapRef.current?.zoomIn();
     const handleZoomOut = () => mapRef.current?.zoomOut();
-    const handleLocate  = () => {
+    const handleLocate = () => {
         if (!navigator.geolocation) return;
         navigator.geolocation.getCurrentPosition((pos) => {
             setLocation({
@@ -336,6 +604,9 @@ function App() {
                 stationsError={stationsError}
                 selectedStationId={selectedStationId}
                 onStationClick={handleStationClick}
+                favoritesList={favoritesList}
+                favoritesListLoading={favoritesListLoading}
+                onFavoriteClick={handleFavoriteClick}
                 location={location}
                 searchRadiusKm={searchRadiusKm}
                 setSearchRadiusKm={setSearchRadiusKm}
@@ -361,7 +632,9 @@ function App() {
                     stations={visibleStations}
                     selectedStationId={selectedStationId}
                     onStationClick={handleStationClick}
-                    onMapReady={(m) => { mapRef.current = m; }}
+                    onMapReady={(m) => {
+                        mapRef.current = m;
+                    }}
                 />
 
                 <div className="map-top">
@@ -399,11 +672,26 @@ function App() {
                 feedbackActionMessage={feedbackActionMessage}
                 onDeleteFeedback={handleDeleteFeedback}
                 onDeleteStation={handleDeleteStation}
+                isFavorited={isFavorited}
+                favoritesLoading={favoritesLoading}
+                onAddFavorite={handleAddFavorite}
+                onRemoveFavorite={handleRemoveFavorite}
+                stationEditMode={stationEditMode}
+                stationEditForm={stationEditForm}
+                stationEditLoading={stationEditLoading}
+                stationEditMessage={stationEditMessage}
+                onStartStationEdit={handleStartStationEdit}
+                onCancelStationEdit={handleCancelStationEdit}
+                onSaveStationEdit={handleSaveStationEdit}
+                onStationEditChange={handleStationEditChange}
             />
 
             <LoginModal
                 open={loginModalOpen}
-                onClose={() => { setLoginModalOpen(false); setAuthError(null); }}
+                onClose={() => {
+                    setLoginModalOpen(false);
+                    setAuthError(null);
+                }}
                 onSubmit={handleLogin}
                 authError={authError}
             />

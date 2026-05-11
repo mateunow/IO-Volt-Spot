@@ -1,15 +1,15 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import StationCard from "./StationCard.jsx";
-import { IconBolt } from "./Icons.jsx";
+import { IconBolt, IconChevronRight } from "./Icons.jsx";
 import { STATUS_COLORS } from "./markerIcons.js";
 
 const RADIUS_OPTIONS = [2, 10, 25, 50];
 
 const STATUS_FILTERS = [
-    { key: "WORKING",  label: "Dostępne",  color: STATUS_COLORS.WORKING.fill },
-    { key: "OCCUPIED", label: "Zajęte",    color: STATUS_COLORS.OCCUPIED.fill },
+    { key: "WORKING", label: "Dostępne", color: STATUS_COLORS.WORKING.fill },
+    { key: "OCCUPIED", label: "Zajęte", color: STATUS_COLORS.OCCUPIED.fill },
     { key: "DISABLED", label: "Wyłączone", color: STATUS_COLORS.DISABLED.fill },
-    { key: "DEFAULT",  label: "Nieznane",  color: STATUS_COLORS.DEFAULT.fill },
+    { key: "DEFAULT", label: "Nieznane", color: STATUS_COLORS.DEFAULT.fill },
 ];
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -19,8 +19,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
     const dLon = toRad(lon2 - lon1);
     const a =
         Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-        Math.sin(dLon / 2) ** 2;
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
     return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -30,6 +29,9 @@ function Sidebar({
     stationsError,
     selectedStationId,
     onStationClick,
+    favoritesList = [],
+    favoritesListLoading = false,
+    onFavoriteClick,
     location,
     searchRadiusKm,
     setSearchRadiusKm,
@@ -42,6 +44,7 @@ function Sidebar({
     onToggleSidebar,
 }) {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const [favoritesCollapsed, setFavoritesCollapsed] = useState(true);
     const profileRef = useRef(null);
 
     useEffect(() => {
@@ -59,13 +62,15 @@ function Sidebar({
             .map((s) => {
                 const lat = Number(s.latitude);
                 const lon = Number(s.longitude);
-                const dist = (location && !Number.isNaN(lat) && !Number.isNaN(lon))
-                    ? haversineKm(location.lat, location.lon, lat, lon)
-                    : null;
+                const dist =
+                    location && !Number.isNaN(lat) && !Number.isNaN(lon)
+                        ? haversineKm(location.lat, location.lon, lat, lon)
+                        : null;
                 return { ...s, _distance: dist };
             })
             .sort((a, b) => {
-                if (a._distance != null && b._distance != null) return a._distance - b._distance;
+                if (a._distance != null && b._distance != null)
+                    return a._distance - b._distance;
                 if (a._distance != null) return -1;
                 if (b._distance != null) return 1;
                 return 0;
@@ -79,7 +84,9 @@ function Sidebar({
                     <IconBolt />
                 </div>
                 <div>
-                    <div className="brand-name">Volt Spot <span className="dot" /></div>
+                    <div className="brand-name">
+                        Volt Spot <span className="dot" />
+                    </div>
                     <div className="brand-sub">dane na żywo</div>
                 </div>
                 {currentUser ? (
@@ -89,16 +96,28 @@ function Sidebar({
                             onClick={() => setShowProfileMenu((v) => !v)}
                             title="Konto"
                         >
-                            <div className="avatar">{(currentUser.displayName ?? "?")[0]?.toUpperCase()}</div>
-                            <span>{currentUser.displayName ?? "Użytkownik"}</span>
+                            <div className="avatar">
+                                {(currentUser.displayName ??
+                                    "?")[0]?.toUpperCase()}
+                            </div>
+                            <span>
+                                {currentUser.displayName ?? "Użytkownik"}
+                            </span>
                         </div>
                         {showProfileMenu && (
                             <div className="profile-menu">
-                                <div className="profile-menu-name">{currentUser.displayName ?? "Użytkownik"}</div>
-                                <div className="profile-menu-email">{currentUser.email ?? ""}</div>
+                                <div className="profile-menu-name">
+                                    {currentUser.displayName ?? "Użytkownik"}
+                                </div>
+                                <div className="profile-menu-email">
+                                    {currentUser.email ?? ""}
+                                </div>
                                 <button
                                     className="profile-menu-logout"
-                                    onClick={() => { setShowProfileMenu(false); onLogoutClick(); }}
+                                    onClick={() => {
+                                        setShowProfileMenu(false);
+                                        onLogoutClick();
+                                    }}
                                 >
                                     Wyloguj
                                 </button>
@@ -152,13 +171,74 @@ function Sidebar({
                                 className={`f-chip${activeStatuses.has(f.key) ? " active" : ""}`}
                                 onClick={() => onToggleStatus(f.key)}
                             >
-                                <span className="dot" style={{ background: f.color }} />
+                                <span
+                                    className="dot"
+                                    style={{ background: f.color }}
+                                />
                                 {f.label}
                             </button>
                         ))}
                     </div>
                 </div>
             </div>
+
+            {currentUser && (
+                <div className="filters-section">
+                    <div className="filters-header">
+                        <button
+                            type="button"
+                            className="section-toggle"
+                            onClick={() => setFavoritesCollapsed((v) => !v)}
+                            aria-expanded={!favoritesCollapsed}
+                        >
+                            <span>Ulubione</span>
+                            <span className="count">{favoritesList.length}</span>
+                            <IconChevronRight
+                                className={`section-toggle-icon${favoritesCollapsed ? "" : " open"}`}
+                            />
+                        </button>
+                    </div>
+                    {!favoritesCollapsed && (
+                        <>
+                            {favoritesListLoading && (
+                                <div className="empty-state">
+                                    Ładowanie ulubionych…
+                                </div>
+                            )}
+                            {!favoritesListLoading && favoritesList.length === 0 && (
+                                <div className="empty-state">
+                                    Brak ulubionych stacji
+                                </div>
+                            )}
+                            {!favoritesListLoading && favoritesList.length > 0 && (
+                                <div className="station-list favorites-list">
+                                    {favoritesList.map((favorite) => (
+                                        <StationCard
+                                            key={favorite.id}
+                                            station={{
+                                                id: favorite.stationId,
+                                                name: favorite.stationName,
+                                                city: favorite.city,
+                                                operatorName: favorite.operatorName,
+                                                latitude: favorite.latitude,
+                                                longitude: favorite.longitude,
+                                                markerStatus: "DEFAULT",
+                                                addressLine: null,
+                                            }}
+                                            isActive={
+                                                String(favorite.stationId) ===
+                                                String(selectedStationId)
+                                            }
+                                            distanceKm={null}
+                                            onClick={() => onFavoriteClick?.(favorite)}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            )}
 
             <div className="list-header">
                 <span className="list-title">
@@ -168,13 +248,21 @@ function Sidebar({
             </div>
 
             <div className="station-list">
-                {stationsLoading && <div className="empty-state">Ładowanie stacji…</div>}
+                {stationsLoading && (
+                    <div className="empty-state">Ładowanie stacji…</div>
+                )}
                 {stationsError && sortedStations.length === 0 && (
-                    <div className="empty-state" style={{ color: "#F87171" }}>{stationsError}</div>
+                    <div className="empty-state" style={{ color: "#F87171" }}>
+                        {stationsError}
+                    </div>
                 )}
-                {!stationsLoading && sortedStations.length === 0 && !stationsError && (
-                    <div className="empty-state">Brak stacji do wyświetlenia</div>
-                )}
+                {!stationsLoading &&
+                    sortedStations.length === 0 &&
+                    !stationsError && (
+                        <div className="empty-state">
+                            Brak stacji do wyświetlenia
+                        </div>
+                    )}
                 {sortedStations.map((s) => (
                     <StationCard
                         key={s.id}
@@ -187,7 +275,10 @@ function Sidebar({
             </div>
 
             <div className="sb-footer">
-                <div className="live"><span className="dot" /> Dane na żywo · {stations.length} stacji</div>
+                <div className="live">
+                    <span className="dot" /> Dane na żywo · {stations.length}{" "}
+                    stacji
+                </div>
             </div>
         </aside>
     );
