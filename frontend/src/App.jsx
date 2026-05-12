@@ -304,7 +304,7 @@ function App() {
             });
             if (!resp.ok) {
                 const err = await resp.json().catch(() => null);
-                throw new Error(errorBody?.message ?? "Nie udało się zalogować");
+                throw new Error(err?.message ?? "Nie udało się zalogować");
             }
             const data = await resp.json();
             setAuthToken(data.token);
@@ -353,7 +353,7 @@ function App() {
             if (!resp.ok) {
                 const err = await resp.json().catch(() => null);
                 throw new Error(
-                    errorBody?.message ?? "Nie udało się zapisać zgłoszenia",
+                    err?.message ?? "Nie udało się zapisać zgłoszenia",
                 );
             }
 
