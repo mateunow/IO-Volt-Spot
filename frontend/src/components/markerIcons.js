@@ -2,10 +2,10 @@
 import L from "leaflet";
 
 export const STATUS_COLORS = {
-    WORKING:  { fill: "#22C55E", stroke: "#15803D", label: "Dostępna" },
-    OCCUPIED: { fill: "#F97316", stroke: "#C2410C", label: "Zajęta" },
-    DISABLED: { fill: "#F9A8B4", stroke: "#BE185D", label: "Wyłączona" },
-    DEFAULT:  { fill: "#0F1115", stroke: "#000000", label: "Nieznany" },
+    WORKING:  { fill: "#22C55E", stroke: "#15803D", selectedFill: "#15803D", selectedStroke: "#14532D", label: "Dostępna" },
+    OCCUPIED: { fill: "#F97316", stroke: "#C2410C", selectedFill: "#C2410C", selectedStroke: "#7C2D12", label: "Zajęta" },
+    DISABLED: { fill: "#F9A8B4", stroke: "#BE185D", selectedFill: "#BE185D", selectedStroke: "#831843", label: "Wyłączona" },
+    DEFAULT:  { fill: "#0F1115", stroke: "#000000", selectedFill: "#374151", selectedStroke: "#111827", label: "Nieznany" },
 };
 
 export function statusColor(markerStatus) {
@@ -38,11 +38,13 @@ function pinSvg(fillColor, strokeColor, isSelected = false) {
 
 export function makeIcon(markerStatus, isSelected = false) {
     const c = statusColor(markerStatus);
+    const fill   = isSelected ? (c.selectedFill   ?? c.fill)   : c.fill;
+    const stroke = isSelected ? (c.selectedStroke ?? c.stroke) : c.stroke;
     const size = isSelected ? [42, 52] : [38, 46];
     const anchor = isSelected ? [21, 50] : [19, 44];
     return L.divIcon({
         className: "ev-marker",
-        html: pinSvg(c.fill, c.stroke, isSelected),
+        html: pinSvg(fill, stroke, isSelected),
         iconSize: size,
         iconAnchor: anchor,
         popupAnchor: [0, -38],
