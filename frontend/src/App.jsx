@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import MapView from "./components/MapView.jsx";
 import MapControls from "./components/MapControls.jsx";
@@ -45,6 +45,12 @@ function App() {
     const [stationsError, setStationsError] = useState(null);
 
     const [activeStatuses, setActiveStatuses] = useState(new Set());
+    const [advancedFilters, setAdvancedFilters] = useState({
+        connectorTypes: new Set(),
+        minPowerKw: null,
+        only24h: false,
+        operators: new Set(),
+    });
 
     const [selectedStationId, setSelectedStationId] = useState(null);
     const [stationDetails, setStationDetails] = useState(null);
@@ -73,12 +79,27 @@ function App() {
     const [stationEditLoading, setStationEditLoading] = useState(false);
     const [stationEditMessage, setStationEditMessage] = useState(null);
 
-    const mapRef = useRef(null);
 
     const visibleStations = useMemo(() => {
-        if (activeStatuses.size === 0) return stations;
-        return stations.filter((station) => activeStatuses.has(station.markerStatus ?? "DEFAULT"));
-    }, [stations, activeStatuses]);
+        return stations.filter((station) => {
+            if (activeStatuses.size > 0 && !activeStatuses.has(station.markerStatus ?? "DEFAULT")) return false;
+
+            const { connectorTypes, minPowerKw, only24h, operators } = advancedFilters;
+
+            if (connectorTypes.size > 0) {
+                const stationTypes = new Set(station.connectorTypes ?? []);
+                if (![...connectorTypes].some((t) => stationTypes.has(t))) return false;
+            }
+
+            if (minPowerKw != null && (station.maxPowerKw ?? 0) < minPowerKw) return false;
+
+            if (only24h && !(station.openingHours ?? "").toLowerCase().includes("24")) return false;
+
+            if (operators.size > 0 && !operators.has(station.operatorName ?? "")) return false;
+
+            return true;
+        });
+    }, [stations, activeStatuses, advancedFilters]);
 
     useEffect(() => {
         (async () => {
@@ -286,6 +307,14 @@ function App() {
     };
 
     const handleClearStatuses = () => setActiveStatuses(new Set());
+
+    const handleAdvancedFilterChange = (key, value) => {
+        setAdvancedFilters((prev) => ({ ...prev, [key]: value }));
+    };
+
+    const handleClearAdvancedFilters = () => {
+        setAdvancedFilters({ connectorTypes: new Set(), minPowerKw: null, only24h: false, operators: new Set() });
+    };
 
     const handleLogin = async ({ mode, email, password, displayName }) => {
         setAuthError(null);
@@ -577,8 +606,8 @@ function App() {
         }
     };
 
-    const handleZoomIn = () => mapRef.current?.zoomIn();
-    const handleZoomOut = () => mapRef.current?.zoomOut();
+    const handleZoomIn  = () => window.dispatchEvent(new Event("voltspot:zoom-in"));
+    const handleZoomOut = () => window.dispatchEvent(new Event("voltspot:zoom-out"));
     const handleLocate = () => {
         if (!navigator.geolocation) return;
         navigator.geolocation.getCurrentPosition((pos) => {
@@ -616,6 +645,10 @@ function App() {
                 activeStatuses={activeStatuses}
                 onToggleStatus={handleToggleStatus}
                 onClearStatuses={handleClearStatuses}
+                allStations={stations}
+                advancedFilters={advancedFilters}
+                onAdvancedFilterChange={handleAdvancedFilterChange}
+                onClearAdvancedFilters={handleClearAdvancedFilters}
                 onToggleSidebar={() => setSidebarOpen((v) => !v)}
             />
 
@@ -632,9 +665,6 @@ function App() {
                     stations={visibleStations}
                     selectedStationId={selectedStationId}
                     onStationClick={handleStationClick}
-                    onMapReady={(m) => {
-                        mapRef.current = m;
-                    }}
                 />
 
                 <div className="map-top">

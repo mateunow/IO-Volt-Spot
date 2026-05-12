@@ -20,17 +20,24 @@ function MapController({ location, selectedStation }) {
         }
     }, [location, selectedStation, map]);
 
-    // Expose map for parent — invalidate size when panel opens/closes
     useEffect(() => {
-        const handler = () => setTimeout(() => map.invalidateSize(), 50);
-        window.addEventListener("voltspot:resize-map", handler);
-        return () => window.removeEventListener("voltspot:resize-map", handler);
+        const resize  = () => setTimeout(() => map.invalidateSize(), 50);
+        const zoomIn  = () => map.zoomIn();
+        const zoomOut = () => map.zoomOut();
+        window.addEventListener("voltspot:resize-map", resize);
+        window.addEventListener("voltspot:zoom-in",    zoomIn);
+        window.addEventListener("voltspot:zoom-out",   zoomOut);
+        return () => {
+            window.removeEventListener("voltspot:resize-map", resize);
+            window.removeEventListener("voltspot:zoom-in",    zoomIn);
+            window.removeEventListener("voltspot:zoom-out",   zoomOut);
+        };
     }, [map]);
 
     return null;
 }
 
-function MapView({ location, stations = [], selectedStationId, onStationClick, onMapReady }) {
+function MapView({ location, stations = [], selectedStationId, onStationClick }) {
     const selectedStation = stations.find((s) => s.id === selectedStationId);
 
     return (
@@ -41,7 +48,6 @@ function MapView({ location, stations = [], selectedStationId, onStationClick, o
             maxBoundsViscosity={0.8}
             zoomControl={false}
             attributionControl={false}
-            whenCreated={onMapReady}
         >
             <TileLayer
                 url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"

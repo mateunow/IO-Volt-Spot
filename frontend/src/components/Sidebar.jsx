@@ -12,6 +12,13 @@ const STATUS_FILTERS = [
     { key: "DEFAULT", label: "Nieznane", color: STATUS_COLORS.DEFAULT.fill },
 ];
 
+const POWER_PRESETS = [
+    { label: "7+ kW", value: 7 },
+    { label: "22+ kW", value: 22 },
+    { label: "50+ kW", value: 50 },
+    { label: "150+ kW", value: 150 },
+];
+
 function haversineKm(lat1, lon1, lat2, lon2) {
     const toRad = (v) => (v * Math.PI) / 180;
     const R = 6371;
@@ -41,10 +48,15 @@ function Sidebar({
     activeStatuses,
     onToggleStatus,
     onClearStatuses,
+    allStations = [],
+    advancedFilters,
+    onAdvancedFilterChange,
+    onClearAdvancedFilters,
     onToggleSidebar,
 }) {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [favoritesCollapsed, setFavoritesCollapsed] = useState(true);
+    const [advancedCollapsed, setAdvancedCollapsed] = useState(true);
     const profileRef = useRef(null);
 
     useEffect(() => {
@@ -56,6 +68,33 @@ function Sidebar({
         document.addEventListener("mousedown", handler);
         return () => document.removeEventListener("mousedown", handler);
     }, []);
+
+    const availableConnectorTypes = useMemo(() => {
+        const types = new Set();
+        for (const s of allStations) {
+            for (const t of s.connectorTypes ?? []) {
+                types.add(t);
+            }
+        }
+        return [...types].sort();
+    }, [allStations]);
+
+    const availableOperators = useMemo(() => {
+        const ops = new Set();
+        for (const s of allStations) {
+            if (s.operatorName) ops.add(s.operatorName);
+        }
+        return [...ops].sort();
+    }, [allStations]);
+
+    const advancedActiveCount = useMemo(() => {
+        let count = 0;
+        if (advancedFilters.connectorTypes.size > 0) count++;
+        if (advancedFilters.minPowerKw != null) count++;
+        if (advancedFilters.only24h) count++;
+        if (advancedFilters.operators.size > 0) count++;
+        return count;
+    }, [advancedFilters]);
 
     const sortedStations = useMemo(() => {
         return stations
@@ -76,6 +115,20 @@ function Sidebar({
                 return 0;
             });
     }, [stations, location]);
+
+    function toggleConnectorType(type) {
+        const next = new Set(advancedFilters.connectorTypes);
+        if (next.has(type)) next.delete(type);
+        else next.add(type);
+        onAdvancedFilterChange("connectorTypes", next);
+    }
+
+    function toggleOperator(op) {
+        const next = new Set(advancedFilters.operators);
+        if (next.has(op)) next.delete(op);
+        else next.add(op);
+        onAdvancedFilterChange("operators", next);
+    }
 
     return (
         <aside className="sidebar">
@@ -180,6 +233,104 @@ function Sidebar({
                         ))}
                     </div>
                 </div>
+            </div>
+
+            <div className="filters-section">
+                <div className="filters-header">
+                    <button
+                        type="button"
+                        className="section-toggle"
+                        onClick={() => setAdvancedCollapsed((v) => !v)}
+                        aria-expanded={!advancedCollapsed}
+                    >
+                        <span>Filtry zaawansowane</span>
+                        {advancedActiveCount > 0 && (
+                            <span
+                                className="count"
+                                style={{ cursor: "pointer" }}
+                                onClick={(e) => { e.stopPropagation(); onClearAdvancedFilters(); }}
+                                title="Wyczyść filtry zaawansowane"
+                            >
+                                {advancedActiveCount} aktywnych · wyczyść
+                            </span>
+                        )}
+                        <IconChevronRight
+                            className={`section-toggle-icon${advancedCollapsed ? "" : " open"}`}
+                        />
+                    </button>
+                </div>
+
+                {!advancedCollapsed && (
+                    <div className="advanced-filters">
+                        {availableConnectorTypes.length > 0 && (
+                            <div className="filter-group">
+                                <div className="filter-label">Typ złącza</div>
+                                <div className="f-chips">
+                                    {availableConnectorTypes.map((type) => (
+                                        <button
+                                            key={type}
+                                            className={`f-chip${advancedFilters.connectorTypes.has(type) ? " active" : ""}`}
+                                            onClick={() => toggleConnectorType(type)}
+                                        >
+                                            {type}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="filter-group">
+                            <div className="filter-label">Minimalna moc</div>
+                            <div className="f-chips">
+                                {POWER_PRESETS.map((p) => (
+                                    <button
+                                        key={p.value}
+                                        className={`f-chip${advancedFilters.minPowerKw === p.value ? " active" : ""}`}
+                                        onClick={() =>
+                                            onAdvancedFilterChange(
+                                                "minPowerKw",
+                                                advancedFilters.minPowerKw === p.value ? null : p.value,
+                                            )
+                                        }
+                                    >
+                                        {p.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="filter-group">
+                            <div className="filter-label">Dostępność</div>
+                            <div className="f-chips">
+                                <button
+                                    className={`f-chip${advancedFilters.only24h ? " active" : ""}`}
+                                    onClick={() =>
+                                        onAdvancedFilterChange("only24h", !advancedFilters.only24h)
+                                    }
+                                >
+                                    24/7
+                                </button>
+                            </div>
+                        </div>
+
+                        {availableOperators.length > 0 && (
+                            <div className="filter-group">
+                                <div className="filter-label">Operator</div>
+                                <div className="f-chips">
+                                    {availableOperators.map((op) => (
+                                        <button
+                                            key={op}
+                                            className={`f-chip${advancedFilters.operators.has(op) ? " active" : ""}`}
+                                            onClick={() => toggleOperator(op)}
+                                        >
+                                            {op}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {currentUser && (
