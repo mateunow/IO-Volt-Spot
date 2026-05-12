@@ -34,6 +34,19 @@ public final class StationMapper {
     }
 
     public static StationMarkerResponse toMarkerResponse(Station station, StationStatusSnapshot snapshot) {
+        List<String> connectorTypes = station.getConnectors().stream()
+                .map(StationConnector::getConnectorType)
+                .filter(t -> t != null && !t.equals("Unknown"))
+                .distinct()
+                .sorted()
+                .toList();
+
+        double maxPower = station.getConnectors().stream()
+                .filter(c -> c.getPowerKw() != null)
+                .mapToDouble(c -> c.getPowerKw().doubleValue())
+                .max()
+                .orElse(0.0);
+
         return new StationMarkerResponse(
                 station.getId(),
                 station.getName(),
@@ -41,7 +54,10 @@ public final class StationMapper {
                 station.getLongitude(),
                 station.getCity(),
                 station.getOperatorName(),
-                resolveMarkerStatus(snapshot)
+                resolveMarkerStatus(snapshot),
+                station.getOpeningHours(),
+                connectorTypes,
+                maxPower > 0 ? maxPower : null
         );
     }
 

@@ -1,70 +1,41 @@
-import { useEffect, useMemo, useState } from "react";
-import "./App.css";
-import "leaflet/dist/leaflet.css";
-import MapView from "./components/MapView";
-import SearchBar from "./components/SearchBar";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Sidebar from "./components/Sidebar.jsx";
+import MapView from "./components/MapView.jsx";
+import MapControls from "./components/MapControls.jsx";
+import { Legend } from "./components/MapOverlays.jsx";
+import FloatingSearchBar from "./components/FloatingSearchBar.jsx";
+import DetailPanel from "./components/DetailPanel.jsx";
+import LoginModal from "./components/LoginModal.jsx";
+import { IconChevronLeft, IconChevronRight } from "./components/Icons.jsx";
 
 const API_BASE_URL = "";
 const AUTH_TOKEN_KEY = "voltspot_auth_token";
 const AUTH_USER_KEY = "voltspot_auth_user";
 
-const OPERATIONAL_STATUS_OPTIONS = [
-    { value: "WORKING", label: "Działa" },
-    { value: "NOT_WORKING", label: "Nie działa" },
-    { value: "BUSY", label: "Zajęta" },
-    { value: "LIMITED", label: "Ograniczona" },
-    { value: "UNKNOWN", label: "Nieznany" },
-];
-
 function haversineKm(lat1, lon1, lat2, lon2) {
-    const toRad = (value) => (value * Math.PI) / 180;
-    const earthRadiusKm = 6371;
+    const toRad = (v) => (v * Math.PI) / 180;
+    const R = 6371;
     const dLat = toRad(lat2 - lat1);
     const dLon = toRad(lon2 - lon1);
-
     const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return earthRadiusKm * c;
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function formatConnector(connector) {
-    const quantity = connector.quantity ?? 1;
-    const powerLabel = connector.powerKw ? `${connector.powerKw} kW` : "moc nieznana";
-    const currentType = connector.currentType ?? "Rodzaj prądu nieznany";
-    const connectorType = connector.connectorType === "Unknown"
-        ? "Złącze"
-        : (connector.connectorType ?? "typ złącza nieznany");
-    return `${connectorType} x${quantity} (${powerLabel}, ${currentType})`;
-}
-
-function formatOperationalStatus(status) {
-    return OPERATIONAL_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
-}
-
-function buildAuthHeaders(token, extraHeaders = {}) {
-    return {
-        ...extraHeaders,
-        Authorization: `Bearer ${token}`,
-    };
+function buildAuthHeaders(token, extra = {}) {
+    return { ...extra, Authorization: `Bearer ${token}` };
 }
 
 function readStoredUser() {
-    const storedUser = localStorage.getItem(AUTH_USER_KEY);
-    if (!storedUser) {
-        return null;
-    }
-
+    const stored = localStorage.getItem(AUTH_USER_KEY);
+    if (!stored) return null;
     try {
-        return JSON.parse(storedUser);
+        return JSON.parse(stored);
     } catch {
         return null;
     }
 }
-
 
 function App() {
     const [location, setLocation] = useState(null);
@@ -72,6 +43,14 @@ function App() {
     const [stations, setStations] = useState([]);
     const [stationsLoading, setStationsLoading] = useState(false);
     const [stationsError, setStationsError] = useState(null);
+
+    const [activeStatuses, setActiveStatuses] = useState(new Set());
+    const [advancedFilters, setAdvancedFilters] = useState({
+        connectorTypes: new Set(),
+        minPowerKw: null,
+        only24h: false,
+        operators: new Set(),
+    });
 
     const [selectedStationId, setSelectedStationId] = useState(null);
     const [stationDetails, setStationDetails] = useState(null);
@@ -85,41 +64,81 @@ function App() {
     const [currentUser, setCurrentUser] = useState(() => readStoredUser());
     const [authToken, setAuthToken] = useState(() => localStorage.getItem(AUTH_TOKEN_KEY) || "");
     const [loginModalOpen, setLoginModalOpen] = useState(false);
-    const [authMode, setAuthMode] = useState("login");
-    const [loginEmail, setLoginEmail] = useState("");
-    const [loginPassword, setLoginPassword] = useState("");
-    const [registerDisplayName, setRegisterDisplayName] = useState("");
-    const [authLoading, setAuthLoading] = useState(false);
     const [authError, setAuthError] = useState(null);
 
-    const [feedbackStatus, setFeedbackStatus] = useState("WORKING");
-    const [feedbackComment, setFeedbackComment] = useState("");
     const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
     const [feedbackActionMessage, setFeedbackActionMessage] = useState(null);
 
+    const [isFavorited, setIsFavorited] = useState(false);
+    const [favoritesLoading, setFavoritesLoading] = useState(false);
+    const [favoritesList, setFavoritesList] = useState([]);
+    const [favoritesListLoading, setFavoritesListLoading] = useState(false);
+
+    const [stationEditMode, setStationEditMode] = useState(false);
+    const [stationEditForm, setStationEditForm] = useState(null);
+    const [stationEditLoading, setStationEditLoading] = useState(false);
+    const [stationEditMessage, setStationEditMessage] = useState(null);
+
+    const [mapCenter, setMapCenter] = useState(null);
+    const [mapViewport, setMapViewport] = useState(null);
+
+    const visibleStations = useMemo(() => {
+        return stations.filter((station) => {
+            if (activeStatuses.size > 0 && !activeStatuses.has(station.markerStatus ?? "DEFAULT")) return false;
+
+            const { connectorTypes, minPowerKw, only24h, operators } = advancedFilters;
+
+            if (connectorTypes.size > 0) {
+                const stationTypes = new Set(station.connectorTypes ?? []);
+                if (![...connectorTypes].some((t) => stationTypes.has(t))) return false;
+            }
+
+            if (minPowerKw != null && (station.maxPowerKw ?? 0) < minPowerKw) return false;
+
+            if (only24h && !(station.openingHours ?? "").toLowerCase().includes("24")) return false;
+
+            if (operators.size > 0 && !operators.has(station.operatorName ?? "")) return false;
+
+            return true;
+        });
+    }, [stations, activeStatuses, advancedFilters]);
+
+    const markersOnMap = useMemo(() => {
+        if (!mapViewport || mapViewport.zoom < 8) return [];
+        const { minLat, maxLat, minLon, maxLon, centerLat, centerLon, zoom } = mapViewport;
+
+        const inView = visibleStations.filter((s) => {
+            const lat = Number(s.latitude);
+            const lon = Number(s.longitude);
+            return lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon;
+        });
+
+        const MAX = zoom >= 13 ? 600 : zoom >= 11 ? 300 : zoom >= 9 ? 150 : 80;
+        if (inView.length <= MAX) return inView;
+
+        return inView
+            .map((s) => ({ s, d: (Number(s.latitude) - centerLat) ** 2 + (Number(s.longitude) - centerLon) ** 2 }))
+            .sort((a, b) => a.d - b.d)
+            .slice(0, MAX)
+            .map(({ s }) => s);
+    }, [visibleStations, mapViewport]);
+
     useEffect(() => {
-        const loadStations = async () => {
+        (async () => {
             setStationsLoading(true);
             setStationsError(null);
-
             try {
                 const response = await fetch(`${API_BASE_URL}/api/stations`);
-
-                if (!response.ok) {
-                    throw new Error(`Błąd HTTP! Status: ${response.status}`);
-                }
-
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 setStations(Array.isArray(data) ? data : []);
             } catch (error) {
-                console.error("Błąd pobierania stacji:", error);
+                console.error(error);
                 setStationsError("Nie udało się pobrać listy stacji");
             } finally {
                 setStationsLoading(false);
             }
-        };
-
-        loadStations();
+        })();
     }, []);
 
     useEffect(() => {
@@ -130,229 +149,194 @@ function App() {
             return;
         }
 
-        const loadCurrentUser = async () => {
-            setAuthLoading(true);
-
+        (async () => {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+                const resp = await fetch(`${API_BASE_URL}/api/auth/me`, {
                     headers: buildAuthHeaders(authToken),
                 });
-
-                if (!response.ok) {
-                    throw new Error(`Błąd HTTP! Status: ${response.status}`);
-                }
-
-                const user = await response.json();
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const user = await resp.json();
                 setCurrentUser(user);
                 localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
-            } catch (error) {
-                console.error("Nie udało się odczytać sesji:", error);
+            } catch (err) {
+                console.error("Auth refresh failed", err);
                 setCurrentUser(null);
                 setAuthToken("");
-                localStorage.removeItem(AUTH_TOKEN_KEY);
-                localStorage.removeItem(AUTH_USER_KEY);
-            } finally {
-                setAuthLoading(false);
             }
-        };
-
-        loadCurrentUser();
+        })();
     }, [authToken]);
 
-    useEffect(() => {
-        if (!location) {
-            return;
-        }
-
-        if (typeof searchRadiusKm !== "number" || Number.isNaN(searchRadiusKm) || searchRadiusKm <= 0) {
-            setStationsError("Promień wyszukiwania musi być większy od 0 km");
-            return;
-        }
-
-        const loadNearbyStations = async () => {
-            setStationsLoading(true);
-            setStationsError(null);
-            setSelectedStationId(null);
-
-            try {
-                const params = new URLSearchParams({
-                    lat: String(location.lat),
-                    lon: String(location.lon),
-                    radiusKm: String(searchRadiusKm),
-                });
-
-                const response = await fetch(`${API_BASE_URL}/api/stations?${params.toString()}`);
-
-                if (!response.ok) {
-                    throw new Error(`Błąd HTTP! Status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                setStations(Array.isArray(data) ? data : []);
-            } catch (error) {
-                console.error("Błąd pobierania stacji po odległości:", error);
-                setStationsError("Nie udało się pobrać stacji dla podanej lokalizacji i promienia");
-            } finally {
-                setStationsLoading(false);
-            }
-        };
-
-        loadNearbyStations();
-    }, [location, searchRadiusKm]);
-
-    useEffect(() => {
-        if (!selectedStationId) {
-            return;
-        }
-
-        const stationIsVisible = stations.some((station) => station.id === selectedStationId);
-        if (!stationIsVisible) {
-            setSelectedStationId(null);
-            setStationDetails(null);
-        }
-    }, [stations, selectedStationId]);
 
     useEffect(() => {
         if (!selectedStationId) {
             setStationDetails(null);
-            setDetailsError(null);
-            setDetailsLoading(false);
             setStationFeedbacks([]);
-            setFeedbacksError(null);
             setFeedbackActionMessage(null);
+            setIsFavorited(false);
+            setStationEditMode(false);
+            setStationEditForm(null);
+            setStationEditMessage(null);
             return;
         }
 
-        const loadStationData = async () => {
+        (async () => {
             setDetailsLoading(true);
             setDetailsError(null);
             setFeedbacksLoading(true);
             setFeedbacksError(null);
-
             try {
                 const [detailsResponse, feedbackResponse] = await Promise.all([
                     fetch(`${API_BASE_URL}/api/stations/${selectedStationId}`),
                     fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/feedback`),
                 ]);
+                if (!detailsResponse.ok) throw new Error(`HTTP ${detailsResponse.status}`);
+                setStationDetails(await detailsResponse.json());
+                if (!feedbackResponse.ok) throw new Error(`HTTP ${feedbackResponse.status}`);
+                setStationFeedbacks(await feedbackResponse.json());
 
-                if (!detailsResponse.ok) {
-                    throw new Error(`Błąd HTTP! Status: ${detailsResponse.status}`);
-                }
+                const favoriteResponse = authToken
+                    ? await fetch(`${API_BASE_URL}/api/favorites/${selectedStationId}/is-favorited`, {
+                          headers: buildAuthHeaders(authToken),
+                      })
+                    : await fetch(`${API_BASE_URL}/api/favorites/${selectedStationId}/is-favorited`);
 
-                const detailsData = await detailsResponse.json();
-                setStationDetails(detailsData);
-
-                if (!feedbackResponse.ok) {
-                    throw new Error(`Błąd HTTP! Status: ${feedbackResponse.status}`);
-                }
-
-                const feedbackData = await feedbackResponse.json();
-                setStationFeedbacks(Array.isArray(feedbackData) ? feedbackData : []);
+                setIsFavorited(favoriteResponse.ok ? Boolean(await favoriteResponse.json()) : false);
             } catch (error) {
-                console.error("Błąd pobierania danych stacji:", error);
+                console.error(error);
                 setDetailsError("Nie udało się pobrać szczegółów stacji");
-                setFeedbacksError("Nie udało się pobrać opinii o stacji");
+                setFeedbacksError("Nie udało się pobrać opinii");
             } finally {
                 setDetailsLoading(false);
                 setFeedbacksLoading(false);
             }
-        };
+        })();
+    }, [selectedStationId, authToken]);
 
-        loadStationData();
+    useEffect(() => {
+        if (!stationDetails) {
+            setStationEditForm(null);
+            return;
+        }
+
+        setStationEditForm({
+            name: stationDetails.name ?? "",
+            latitude: stationDetails.latitude ?? "",
+            longitude: stationDetails.longitude ?? "",
+            addressLine: stationDetails.addressLine ?? "",
+            city: stationDetails.city ?? "",
+            country: stationDetails.country ?? "",
+            operatorName: stationDetails.operatorName ?? "",
+            openingHours: stationDetails.openingHours ?? "",
+            accessType: stationDetails.accessType ?? "",
+            active: Boolean(stationDetails.active),
+        });
+        setStationEditMode(false);
+        setStationEditMessage(null);
+    }, [stationDetails]);
+
+    useEffect(() => {
+        window.dispatchEvent(new Event("voltspot:resize-map"));
     }, [selectedStationId]);
 
     const distanceKm = useMemo(() => {
-        if (
-            !location ||
-            typeof location.lat !== "number" ||
-            typeof location.lon !== "number" ||
-            !stationDetails ||
-            typeof stationDetails.latitude !== "number" ||
-            typeof stationDetails.longitude !== "number"
-        ) {
+        if (!location || !stationDetails) return null;
+        if (typeof stationDetails.latitude !== "number" || typeof stationDetails.longitude !== "number") {
             return null;
         }
-
-        return haversineKm(
-            location.lat,
-            location.lon,
-            stationDetails.latitude,
-            stationDetails.longitude
-        );
+        return haversineKm(location.lat, location.lon, stationDetails.latitude, stationDetails.longitude);
     }, [location, stationDetails]);
 
-    const latestStatus = stationDetails?.latestStatus;
+    async function loadUserFavorites() {
+        if (!authToken) {
+            setFavoritesList([]);
+            return;
+        }
 
-    const handleStationClick = (stationId) => {
-        setSelectedStationId(stationId);
-    };
-
-    const handleClosePanel = () => {
-        setSelectedStationId(null);
-        setStationDetails(null);
-        setDetailsError(null);
-        setDetailsLoading(false);
-        setStationFeedbacks([]);
-        setFeedbacksError(null);
-        setFeedbackActionMessage(null);
-    };
-
-    const handleOpenLogin = () => {
-        setAuthError(null);
-        setAuthMode("login");
-        setLoginModalOpen(true);
-    };
-
-    const handleCloseLogin = () => {
-        setLoginModalOpen(false);
-        setAuthError(null);
-    };
-
-    const handleAuthModeToggle = () => {
-        setAuthError(null);
-        setAuthMode((currentMode) => currentMode === "login" ? "register" : "login");
-    };
-
-    const handleLoginSubmit = async (event) => {
-        event.preventDefault();
-        setAuthError(null);
-
+        setFavoritesListLoading(true);
         try {
-            const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
-            const payload = authMode === "login"
-                ? {
-                    email: loginEmail,
-                    password: loginPassword,
-                }
-                : {
-                    email: loginEmail,
-                    password: loginPassword,
-                    displayName: registerDisplayName,
-                };
-
-            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(payload),
+            const response = await fetch(`${API_BASE_URL}/api/favorites`, {
+                headers: buildAuthHeaders(authToken),
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => null);
-                throw new Error(errorData?.message || "Nie udało się zalogować");
+                throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
+            setFavoritesList(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error(error);
+            setFavoritesList([]);
+        } finally {
+            setFavoritesListLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        loadUserFavorites();
+    }, [authToken]);
+
+    const refreshFeedbacks = async (stationId) => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/stations/${stationId}/feedback`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            setStationFeedbacks(await response.json());
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleStationClick = (id) => setSelectedStationId(id);
+    const handleFavoriteClick = (favorite) =>
+        setSelectedStationId(favorite.stationId);
+    const handleClosePanel = () => setSelectedStationId(null);
+
+    const handleToggleStatus = (key) => {
+        setActiveStatuses((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
+
+    const handleClearStatuses = () => setActiveStatuses(new Set());
+
+    const handleAdvancedFilterChange = (key, value) => {
+        setAdvancedFilters((prev) => ({ ...prev, [key]: value }));
+    };
+
+    const handleClearAdvancedFilters = () => {
+        setAdvancedFilters({ connectorTypes: new Set(), minPowerKw: null, only24h: false, operators: new Set() });
+    };
+
+    const handleLogin = async ({ mode, email, password, displayName }) => {
+        setAuthError(null);
+        try {
+            const endpoint =
+                mode === "login" ? "/api/auth/login" : "/api/auth/register";
+            const payload =
+                mode === "login"
+                    ? { email, password }
+                    : { email, password, displayName };
+
+            const resp = await fetch(`${API_BASE_URL}${endpoint}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => null);
+                throw new Error(err?.message ?? "Nie udało się zalogować");
+            }
+            const data = await resp.json();
             setAuthToken(data.token);
             setCurrentUser(data.user);
             localStorage.setItem(AUTH_TOKEN_KEY, data.token);
             localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user));
             setLoginModalOpen(false);
-            setLoginPassword("");
-            setRegisterDisplayName("");
-        } catch (error) {
-            setAuthError(error.message);
+        } catch (err) {
+            setAuthError(err.message);
         }
     };
 
@@ -367,363 +351,430 @@ function App() {
         } finally {
             setAuthToken("");
             setCurrentUser(null);
-            localStorage.removeItem(AUTH_TOKEN_KEY);
-            localStorage.removeItem(AUTH_USER_KEY);
         }
     };
 
-    const refreshStationFeedbacks = async (stationId) => {
-        setFeedbacksLoading(true);
-        setFeedbacksError(null);
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/stations/${stationId}/feedback`);
-
-            if (!response.ok) {
-                throw new Error(`Błąd HTTP! Status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            setStationFeedbacks(Array.isArray(data) ? data : []);
-        } catch (error) {
-            console.error("Błąd pobierania opinii:", error);
-            setFeedbacksError("Nie udało się pobrać opinii o stacji");
-        } finally {
-            setFeedbacksLoading(false);
-        }
-    };
-
-    const handleCreateFeedback = async (status) => {
-        if (!authToken || !selectedStationId) {
-            return;
-        }
+    const handleSubmitFeedback = async (status, comment) => {
+        if (!authToken || !selectedStationId) return;
 
         setFeedbackSubmitting(true);
         setFeedbackActionMessage(null);
-
         try {
-            const response = await fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/feedback`, {
-                method: "POST",
-                headers: buildAuthHeaders(authToken, {
-                    "Content-Type": "application/json",
-                }),
-                body: JSON.stringify({
-                    operationalStatus: status,
-                    comment: feedbackComment.trim() || null,
-                }),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => null);
-                throw new Error(errorData?.message || "Nie udało się zapisać zgłoszenia");
+            const resp = await fetch(
+                `${API_BASE_URL}/api/stations/${selectedStationId}/feedback`,
+                {
+                    method: "POST",
+                    headers: buildAuthHeaders(authToken, {
+                        "Content-Type": "application/json",
+                    }),
+                    body: JSON.stringify({
+                        operationalStatus: status,
+                        comment: (comment ?? "").trim() || null,
+                    }),
+                },
+            );
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => null);
+                throw new Error(
+                    err?.message ?? "Nie udało się zapisać zgłoszenia",
+                );
             }
 
-            setFeedbackComment("");
-            setFeedbackStatus(status);
             setFeedbackActionMessage("Zgłoszenie zapisane");
-            await refreshStationFeedbacks(selectedStationId);
-        } catch (error) {
-            setFeedbackActionMessage(error.message);
+            await refreshFeedbacks(selectedStationId);
+        } catch (err) {
+            setFeedbackActionMessage(err.message);
         } finally {
             setFeedbackSubmitting(false);
         }
     };
 
     const handleDeleteStation = async () => {
-        if (!currentUser || currentUser.role !== "ADMIN" || !selectedStationId) {
-            return;
-        }
-
-        const confirmed = window.confirm("Na pewno usunąć tę stację?");
-        if (!confirmed) {
-            return;
-        }
+        if (!currentUser || currentUser.role !== "ADMIN" || !selectedStationId) return;
+        if (!window.confirm("Na pewno usunąć tę stację?")) return;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/stations/${selectedStationId}`, {
-                method: "DELETE",
-                headers: buildAuthHeaders(authToken),
-            });
-
-            if (!response.ok && response.status !== 204) {
+            const resp = await fetch(
+                `${API_BASE_URL}/api/stations/${selectedStationId}`,
+                {
+                    method: "DELETE",
+                    headers: buildAuthHeaders(authToken),
+                },
+            );
+            if (!resp.ok && resp.status !== 204)
                 throw new Error("Nie udało się usunąć stacji");
-            }
-
-            setStations((currentStations) => currentStations.filter((station) => station.id !== selectedStationId));
+            setStations((curr) =>
+                curr.filter((s) => s.id !== selectedStationId),
+            );
             handleClosePanel();
-        } catch (error) {
-            setFeedbackActionMessage(error.message);
+        } catch (err) {
+            setFeedbackActionMessage(err.message);
         }
     };
 
     const handleDeleteFeedback = async (feedbackId) => {
-        if (!currentUser || currentUser.role !== "ADMIN" || !selectedStationId) {
-            return;
-        }
+        if (!currentUser || !selectedStationId) return;
+
+        const feedback = stationFeedbacks.find(
+            (item) => item.id === feedbackId,
+        );
+        const isOwner =
+            feedback && String(feedback.userId) === String(currentUser.id);
+        const isAdmin = currentUser.role === "ADMIN";
+        if (!isOwner && !isAdmin) return;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/feedback/${feedbackId}`, {
-                method: "DELETE",
-                headers: buildAuthHeaders(authToken),
-            });
-
-            if (!response.ok && response.status !== 204) {
+            const resp = await fetch(
+                `${API_BASE_URL}/api/stations/${selectedStationId}/feedback/${feedbackId}`,
+                { method: "DELETE", headers: buildAuthHeaders(authToken) },
+            );
+            if (!resp.ok && resp.status !== 204)
                 throw new Error("Nie udało się usunąć opinii");
-            }
-
-            await refreshStationFeedbacks(selectedStationId);
-        } catch (error) {
-            setFeedbackActionMessage(error.message);
+            await refreshFeedbacks(selectedStationId);
+        } catch (err) {
+            setFeedbackActionMessage(err.message);
         }
     };
 
+    const handleAddFavorite = async () => {
+        if (!authToken || !selectedStationId) return;
+
+        setFavoritesLoading(true);
+        try {
+            const resp = await fetch(
+                `${API_BASE_URL}/api/favorites/${selectedStationId}`,
+                {
+                    method: "POST",
+                    headers: buildAuthHeaders(authToken),
+                },
+            );
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => null);
+                throw new Error(
+                    err?.message ?? "Nie udało się dodać do ulubionych",
+                );
+            }
+
+            setIsFavorited(true);
+            await loadUserFavorites();
+        } catch (err) {
+            setFeedbackActionMessage(err.message);
+        } finally {
+            setFavoritesLoading(false);
+        }
+    };
+
+    const handleRemoveFavorite = async () => {
+        if (!authToken || !selectedStationId) return;
+
+        setFavoritesLoading(true);
+        try {
+            const resp = await fetch(
+                `${API_BASE_URL}/api/favorites/${selectedStationId}`,
+                {
+                    method: "DELETE",
+                    headers: buildAuthHeaders(authToken),
+                },
+            );
+
+            if (!resp.ok && resp.status !== 204) {
+                throw new Error("Nie udało się usunąć z ulubionych");
+            }
+
+            setIsFavorited(false);
+            await loadUserFavorites();
+        } catch (err) {
+            setFeedbackActionMessage(err.message);
+        } finally {
+            setFavoritesLoading(false);
+        }
+    };
+
+    const handleRemoveFavoriteById = async (stationId) => {
+        if (!authToken || !stationId) return;
+        try {
+            const resp = await fetch(`${API_BASE_URL}/api/favorites/${stationId}`, {
+                method: "DELETE",
+                headers: buildAuthHeaders(authToken),
+            });
+            if (!resp.ok && resp.status !== 204) throw new Error("Nie udało się usunąć z ulubionych");
+            if (stationId === selectedStationId) setIsFavorited(false);
+            await loadUserFavorites();
+        } catch (err) {
+            setFeedbackActionMessage(err.message);
+        }
+    };
+
+    const handleStartStationEdit = () => {
+        if (!stationEditForm) return;
+        setStationEditMode(true);
+        setStationEditMessage(null);
+    };
+
+    const handleCancelStationEdit = () => {
+        setStationEditMode(false);
+        setStationEditMessage(null);
+        if (stationDetails) {
+            setStationEditForm({
+                name: stationDetails.name ?? "",
+                latitude: stationDetails.latitude ?? "",
+                longitude: stationDetails.longitude ?? "",
+                addressLine: stationDetails.addressLine ?? "",
+                city: stationDetails.city ?? "",
+                country: stationDetails.country ?? "",
+                operatorName: stationDetails.operatorName ?? "",
+                openingHours: stationDetails.openingHours ?? "",
+                accessType: stationDetails.accessType ?? "",
+                active: Boolean(stationDetails.active),
+            });
+        }
+    };
+
+    const handleStationEditChange = (field, value) => {
+        setStationEditForm((currentForm) => ({
+            ...(currentForm ?? {}),
+            [field]: value,
+        }));
+    };
+
+    const handleSaveStationEdit = async () => {
+        if (
+            !currentUser ||
+            currentUser.role !== "ADMIN" ||
+            !selectedStationId ||
+            !stationEditForm
+        ) {
+            return;
+        }
+
+        const latitude = Number(stationEditForm.latitude);
+        const longitude = Number(stationEditForm.longitude);
+        if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+            setStationEditMessage("Podaj poprawne współrzędne stacji");
+            return;
+        }
+
+        setStationEditLoading(true);
+        setStationEditMessage(null);
+
+        try {
+            const payload = {
+                name: stationEditForm.name.trim(),
+                latitude,
+                longitude,
+                addressLine: stationEditForm.addressLine.trim() || null,
+                city: stationEditForm.city.trim() || null,
+                country: stationEditForm.country.trim() || null,
+                operatorName: stationEditForm.operatorName.trim() || null,
+                openingHours: stationEditForm.openingHours.trim() || null,
+                accessType: stationEditForm.accessType.trim() || null,
+                active: Boolean(stationEditForm.active),
+            };
+
+            const resp = await fetch(
+                `${API_BASE_URL}/api/stations/${selectedStationId}`,
+                {
+                    method: "PUT",
+                    headers: buildAuthHeaders(authToken, {
+                        "Content-Type": "application/json",
+                    }),
+                    body: JSON.stringify(payload),
+                },
+            );
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => null);
+                throw new Error(
+                    err?.message ?? "Nie udało się zapisać zmian stacji",
+                );
+            }
+
+            const updatedStation = await resp.json();
+            setStationDetails(updatedStation);
+            setStations((currentStations) =>
+                currentStations.map((station) =>
+                    station.id === updatedStation.id
+                        ? {
+                              ...station,
+                              name: updatedStation.name,
+                              latitude: updatedStation.latitude,
+                              longitude: updatedStation.longitude,
+                              city: updatedStation.city,
+                              operatorName: updatedStation.operatorName,
+                          }
+                        : station,
+                ),
+            );
+            setStationEditMode(false);
+            setStationEditMessage("Zapisano zmiany stacji");
+        } catch (err) {
+            setStationEditMessage(err.message);
+        } finally {
+            setStationEditLoading(false);
+        }
+    };
+
+    const viewportAbortRef = useRef(null);
+    const handleViewportChange = useCallback(async ({ minLat, maxLat, minLon, maxLon, centerLat, centerLon, zoom, shouldFetch }) => {
+        setMapCenter({ lat: centerLat, lon: centerLon });
+        setMapViewport({ minLat, maxLat, minLon, maxLon, centerLat, centerLon, zoom });
+        if (!shouldFetch || zoom < 8) return;
+        if (viewportAbortRef.current) viewportAbortRef.current.abort();
+        viewportAbortRef.current = new AbortController();
+        const signal = viewportAbortRef.current.signal;
+        setStationsLoading(true);
+        setStationsError(null);
+        try {
+            const params = new URLSearchParams({
+                minLat: String(minLat),
+                maxLat: String(maxLat),
+                minLon: String(minLon),
+                maxLon: String(maxLon),
+            });
+            const resp = await fetch(`${API_BASE_URL}/api/stations?${params}`, { signal });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            if (Array.isArray(data)) {
+                setStations((prev) => {
+                    const existingIds = new Set(prev.map((s) => s.id));
+                    const fresh = data.filter((s) => !existingIds.has(s.id));
+                    return fresh.length > 0 ? [...prev, ...fresh] : prev;
+                });
+            }
+        } catch (err) {
+            if (err.name !== "AbortError") {
+                console.error(err);
+                setStationsError("Nie udało się pobrać stacji");
+            }
+        } finally {
+            if (!signal.aborted) setStationsLoading(false);
+        }
+    }, []);
+
+    const handleZoomIn  = () => window.dispatchEvent(new Event("voltspot:zoom-in"));
+    const handleZoomOut = () => window.dispatchEvent(new Event("voltspot:zoom-out"));
+    const handleLocate = () => {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition((pos) => {
+            setLocation({
+                lat: pos.coords.latitude,
+                lon: pos.coords.longitude,
+                name: "Moja lokalizacja",
+            });
+            if (!searchRadiusKm) setSearchRadiusKm(10);
+        });
+    };
+
+    const [sidebarOpen, setSidebarOpen] = useState(true);
+
+    const detailOpen = !!selectedStationId;
+    const selectedStation = stations.find((s) => s.id === selectedStationId);
+
     return (
-        <>
-            <SearchBar
-                setLocation={setLocation}
+        <div className={`app${sidebarOpen ? "" : " sidebar-hidden"}`}>
+            <Sidebar
+                stations={visibleStations}
+                stationsLoading={stationsLoading}
+                stationsError={stationsError}
+                selectedStationId={selectedStationId}
+                onStationClick={handleStationClick}
+                favoritesList={favoritesList}
+                favoritesListLoading={favoritesListLoading}
+                onFavoriteClick={handleFavoriteClick}
+                onRemoveFavoriteById={handleRemoveFavoriteById}
+                location={location}
+                mapCenter={mapCenter}
+                searchRadiusKm={searchRadiusKm}
                 setSearchRadiusKm={setSearchRadiusKm}
                 currentUser={currentUser}
-                authLoading={authLoading}
-                onLoginClick={handleOpenLogin}
+                onLoginClick={() => setLoginModalOpen(true)}
                 onLogoutClick={handleLogout}
+                activeStatuses={activeStatuses}
+                onToggleStatus={handleToggleStatus}
+                onClearStatuses={handleClearStatuses}
+                allStations={stations}
+                advancedFilters={advancedFilters}
+                onAdvancedFilterChange={handleAdvancedFilterChange}
+                onClearAdvancedFilters={handleClearAdvancedFilters}
+                onToggleSidebar={() => setSidebarOpen((v) => !v)}
             />
-            <div className="map-wrapper">
+
+            <main className={`map-area${detailOpen ? " detail-open" : ""}`}>
+                <button
+                    className="sidebar-toggle-btn"
+                    onClick={() => setSidebarOpen((v) => !v)}
+                    title={sidebarOpen ? "Zwiń panel" : "Rozwiń panel"}
+                >
+                    {sidebarOpen ? <IconChevronLeft /> : <IconChevronRight />}
+                </button>
                 <MapView
                     location={location}
-                    stations={stations}
+                    stations={markersOnMap}
                     selectedStationId={selectedStationId}
                     onStationClick={handleStationClick}
+                    onViewportChange={handleViewportChange}
                 />
-            </div>
 
-            <aside className="station-panel" aria-live="polite">
-                <div className="station-panel-header">
-                    <h3>Szczegóły stacji</h3>
-                    {selectedStationId && (
-                        <button
-                            type="button"
-                            className="panel-close-btn"
-                            onClick={handleClosePanel}
-                            aria-label="Zamknij panel szczegółów"
-                        >
-                            X
-                        </button>
-                    )}
+                <div className="map-top">
+                    <FloatingSearchBar
+                        setLocation={setLocation}
+                        searchRadiusKm={searchRadiusKm}
+                        setSearchRadiusKm={setSearchRadiusKm}
+                        onStationClick={handleStationClick}
+                    />
                 </div>
 
-                {stationsLoading && <p>Ładowanie stacji...</p>}
-                {stationsError && <p className="panel-error">{stationsError}</p>}
-                {!stationsLoading && !stationsError && (
-                    <>
-                        <p className="panel-meta">Załadowane stacje: {stations.length}</p>
-                        {!location && <p className="panel-meta">Domyślny widok: Kraków (dane startowe)</p>}
-                        {location && typeof searchRadiusKm === "number" && (
-                            <p className="panel-meta">
-                                Filtrowanie: {searchRadiusKm} km od {location.name ?? "wybranej lokalizacji"}
-                            </p>
-                        )}
-                    </>
-                )}
+                <MapControls
+                    onZoomIn={handleZoomIn}
+                    onZoomOut={handleZoomOut}
+                    onLocate={handleLocate}
+                />
 
-                {!selectedStationId && (
-                    <p className="panel-empty">Kliknij marker, aby zobaczyć szczegóły stacji.</p>
-                )}
+                <Legend />
+            </main>
 
-                {selectedStationId && detailsLoading && <p>Ładowanie szczegółów...</p>}
-                {selectedStationId && detailsError && <p className="panel-error">{detailsError}</p>}
+            <DetailPanel
+                open={detailOpen}
+                station={selectedStation}
+                details={stationDetails}
+                detailsLoading={detailsLoading}
+                detailsError={detailsError}
+                feedbacks={stationFeedbacks}
+                feedbacksLoading={feedbacksLoading}
+                feedbacksError={feedbacksError}
+                distanceKm={distanceKm}
+                currentUser={currentUser}
+                onClose={handleClosePanel}
+                onSubmitFeedback={handleSubmitFeedback}
+                feedbackSubmitting={feedbackSubmitting}
+                feedbackActionMessage={feedbackActionMessage}
+                onDeleteFeedback={handleDeleteFeedback}
+                onDeleteStation={handleDeleteStation}
+                isFavorited={isFavorited}
+                favoritesLoading={favoritesLoading}
+                onAddFavorite={handleAddFavorite}
+                onRemoveFavorite={handleRemoveFavorite}
+                stationEditMode={stationEditMode}
+                stationEditForm={stationEditForm}
+                stationEditLoading={stationEditLoading}
+                stationEditMessage={stationEditMessage}
+                onStartStationEdit={handleStartStationEdit}
+                onCancelStationEdit={handleCancelStationEdit}
+                onSaveStationEdit={handleSaveStationEdit}
+                onStationEditChange={handleStationEditChange}
+            />
 
-                {selectedStationId && stationDetails && !detailsLoading && !detailsError && (
-                    <div className="panel-content">
-                        <p><strong>{stationDetails.name ?? "Bez nazwy"}</strong></p>
-                        <p>{stationDetails.addressLine ?? "Adres nieznany"}</p>
-                        <p>{stationDetails.city ?? "Miasto nieznane"}, {stationDetails.country ?? "Kraj nieznany"}</p>
-                        {currentUser?.role === "ADMIN" && (
-                            <button type="button" className="danger-button" onClick={handleDeleteStation}>
-                                Usuń stację
-                            </button>
-                        )}
-
-                        <p className="panel-section-title">Odległość</p>
-                        <p>
-                            {distanceKm == null
-                                ? "Wyszukaj lokalizację, aby policzyć odległość"
-                                : `${distanceKm.toFixed(2)} km`}
-                        </p>
-
-                        <p className="panel-section-title">Godziny dostępności</p>
-                        <p>{stationDetails.openingHours || "Nie podano"}</p>
-
-                        <p className="panel-section-title">Status</p>
-                        {!latestStatus && <p>Brak danych statusowych</p>}
-                        {latestStatus && (
-                            <div className="status-grid">
-                                <span>Dostępne: {latestStatus.availableCount ?? 0}</span>
-                                <span>Zajęte: {latestStatus.occupiedCount ?? 0}</span>
-                                <span>Zarezerwowane: {latestStatus.reservedCount ?? 0}</span>
-                                <span>Wyłączone: {latestStatus.outOfServiceCount ?? 0}</span>
-                                <span>Nieznane: {latestStatus.unknownCount ?? 0}</span>
-                            </div>
-                        )}
-
-                        <p className="panel-section-title">Złącza i moc</p>
-                        {!stationDetails.connectors?.length && <p>Brak informacji o złączach</p>}
-                        {!!stationDetails.connectors?.length && (
-                            <>
-                                <ul className="connector-list">
-                                    {stationDetails.connectors.map((connector) => (
-                                        <li key={connector.id}>{formatConnector(connector)}</li>
-                                    ))}
-                                </ul>
-                            </>
-                        )}
-
-                        <section className="feedback-section">
-                            <p className="panel-section-title">Zgłoś status</p>
-                            {!currentUser && (
-                                <p className="panel-meta">Zaloguj się, aby zgłosić działanie stacji.</p>
-                            )}
-
-                            {currentUser && (
-                                <>
-                                    <div className="feedback-actions">
-                                        <button
-                                            type="button"
-                                            className={feedbackStatus === "WORKING" ? "feedback-chip active" : "feedback-chip"}
-                                            disabled={feedbackSubmitting}
-                                            onClick={() => setFeedbackStatus("WORKING")}
-                                        >
-                                            Działa
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className={feedbackStatus === "NOT_WORKING" ? "feedback-chip active" : "feedback-chip"}
-                                            disabled={feedbackSubmitting}
-                                            onClick={() => setFeedbackStatus("NOT_WORKING")}
-                                        >
-                                            Nie działa
-                                        </button>
-                                    </div>
-
-                                    <label className="feedback-label">
-                                        Komentarz
-                                        <textarea
-                                            value={feedbackComment}
-                                            onChange={(event) => setFeedbackComment(event.target.value)}
-                                            rows="3"
-                                            placeholder="Opcjonalny komentarz"
-                                        />
-                                    </label>
-
-                                    <div className="feedback-submit-row">
-                                        <button
-                                            type="button"
-                                            className="submit-button"
-                                            disabled={feedbackSubmitting}
-                                            onClick={() => handleCreateFeedback(feedbackStatus)}
-                                        >
-                                            {feedbackSubmitting ? "Zapisywanie..." : "Zapisz zgłoszenie"}
-                                        </button>
-                                        <span className="panel-meta">Status: {formatOperationalStatus(feedbackStatus)}</span>
-                                    </div>
-
-                                    {feedbackActionMessage && <p className="panel-meta">{feedbackActionMessage}</p>}
-                                </>
-                            )}
-                        </section>
-
-                        <section className="feedback-section">
-                            <p className="panel-section-title">Opinie</p>
-                            {feedbacksLoading && <p>Ładowanie opinii...</p>}
-                            {feedbacksError && <p className="panel-error">{feedbacksError}</p>}
-                            {!feedbacksLoading && !feedbacksError && stationFeedbacks.length === 0 && (
-                                <p>Brak opinii dla tej stacji.</p>
-                            )}
-                            <ul className="feedback-list">
-                                {stationFeedbacks.map((feedback) => (
-                                    <li key={feedback.id} className="feedback-item">
-                                        <div>
-                                            <strong>{feedback.userDisplayName}</strong>
-                                            <span>{formatOperationalStatus(feedback.operationalStatus)}</span>
-                                        </div>
-                                        {feedback.comment && <p>{feedback.comment}</p>}
-                                        <small>{new Date(feedback.createdAt).toLocaleString("pl-PL")}</small>
-                                        {currentUser?.role === "ADMIN" && (
-                                            <button
-                                                type="button"
-                                                className="danger-button small"
-                                                onClick={() => handleDeleteFeedback(feedback.id)}
-                                            >
-                                                Usuń opinię
-                                            </button>
-                                        )}
-                                    </li>
-                                ))}
-                            </ul>
-                        </section>
-                    </div>
-                )}
-            </aside>
-
-            {loginModalOpen && (
-                <div className="login-modal-backdrop" onClick={handleCloseLogin}>
-                    <div className="login-modal" onClick={(event) => event.stopPropagation()}>
-                        <h3>{authMode === "login" ? "Logowanie" : "Rejestracja"}</h3>
-                        <form onSubmit={handleLoginSubmit}>
-                            {authMode === "register" && (
-                                <label>
-                                    Nazwa użytkownika
-                                    <input
-                                        type="text"
-                                        value={registerDisplayName}
-                                        onChange={(event) => setRegisterDisplayName(event.target.value)}
-                                        autoComplete="name"
-                                        required
-                                    />
-                                </label>
-                            )}
-                            <label>
-                                Email
-                                <input
-                                    type="email"
-                                    value={loginEmail}
-                                    onChange={(event) => setLoginEmail(event.target.value)}
-                                    autoComplete="email"
-                                    required
-                                />
-                            </label>
-                            <label>
-                                Hasło
-                                <input
-                                    type="password"
-                                    value={loginPassword}
-                                    onChange={(event) => setLoginPassword(event.target.value)}
-                                    autoComplete="current-password"
-                                    required
-                                />
-                            </label>
-                            {authError && <p className="panel-error">{authError}</p>}
-                            <div className="login-modal-actions">
-                                <button type="button" className="panel-close-btn" onClick={handleCloseLogin}>
-                                    Anuluj
-                                </button>
-                                <button type="submit" className="submit-button">
-                                    {authMode === "login" ? "Zaloguj" : "Załóż konto"}
-                                </button>
-                            </div>
-                            <button
-                                type="button"
-                                className="auth-mode-toggle"
-                                onClick={handleAuthModeToggle}
-                            >
-                                {authMode === "login"
-                                    ? "Nie masz konta? Zarejestruj się"
-                                    : "Masz już konto? Zaloguj się"}
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
-        </>
+            <LoginModal
+                open={loginModalOpen}
+                onClose={() => {
+                    setLoginModalOpen(false);
+                    setAuthError(null);
+                }}
+                onSubmit={handleLogin}
+                authError={authError}
+            />
+        </div>
     );
 }
 

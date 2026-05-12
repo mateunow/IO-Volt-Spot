@@ -15,7 +15,7 @@ public class OCMClientConfig {
         return RestClient.builder()
                 .baseUrl("https://api.openchargemap.io/v3")
                 .defaultHeader("X-API-Key", apiKey)
-                .defaultHeader(HttpHeaders.USER_AGENT, "volt-spot 0.1 (szymonholysz@student.agh.edu.pl)")
+                .defaultHeader(HttpHeaders.USER_AGENT, "VS (bartoszbudzyn04@gmail.com")
                 .build();
     }
 }
