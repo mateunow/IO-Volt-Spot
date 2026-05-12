@@ -497,6 +497,21 @@ function App() {
         }
     };
 
+    const handleRemoveFavoriteById = async (stationId) => {
+        if (!authToken || !stationId) return;
+        try {
+            const resp = await fetch(`${API_BASE_URL}/api/favorites/${stationId}`, {
+                method: "DELETE",
+                headers: buildAuthHeaders(authToken),
+            });
+            if (!resp.ok && resp.status !== 204) throw new Error("Nie udało się usunąć z ulubionych");
+            if (stationId === selectedStationId) setIsFavorited(false);
+            await loadUserFavorites();
+        } catch (err) {
+            setFeedbackActionMessage(err.message);
+        }
+    };
+
     const handleStartStationEdit = () => {
         if (!stationEditForm) return;
         setStationEditMode(true);
@@ -636,6 +651,7 @@ function App() {
                 favoritesList={favoritesList}
                 favoritesListLoading={favoritesListLoading}
                 onFavoriteClick={handleFavoriteClick}
+                onRemoveFavoriteById={handleRemoveFavoriteById}
                 location={location}
                 searchRadiusKm={searchRadiusKm}
                 setSearchRadiusKm={setSearchRadiusKm}

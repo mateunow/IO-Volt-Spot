@@ -39,6 +39,7 @@ function Sidebar({
     favoritesList = [],
     favoritesListLoading = false,
     onFavoriteClick,
+    onRemoveFavoriteById,
     location,
     searchRadiusKm,
     setSearchRadiusKm,
@@ -364,25 +365,38 @@ function Sidebar({
                             {!favoritesListLoading && favoritesList.length > 0 && (
                                 <div className="station-list favorites-list">
                                     {favoritesList.map((favorite) => (
-                                        <StationCard
-                                            key={favorite.id}
-                                            station={{
-                                                id: favorite.stationId,
-                                                name: favorite.stationName,
-                                                city: favorite.city,
-                                                operatorName: favorite.operatorName,
-                                                latitude: favorite.latitude,
-                                                longitude: favorite.longitude,
-                                                markerStatus: "DEFAULT",
-                                                addressLine: null,
-                                            }}
-                                            isActive={
-                                                String(favorite.stationId) ===
-                                                String(selectedStationId)
-                                            }
-                                            distanceKm={null}
-                                            onClick={() => onFavoriteClick?.(favorite)}
-                                        />
+                                        <div key={favorite.id} className="favorite-row">
+                                            <StationCard
+                                                station={{
+                                                    id: favorite.stationId,
+                                                    name: favorite.stationName,
+                                                    city: favorite.city,
+                                                    operatorName: favorite.operatorName,
+                                                    latitude: favorite.latitude,
+                                                    longitude: favorite.longitude,
+                                                    markerStatus: "DEFAULT",
+                                                    addressLine: null,
+                                                }}
+                                                isActive={
+                                                    String(favorite.stationId) ===
+                                                    String(selectedStationId)
+                                                }
+                                                distanceKm={null}
+                                                onClick={() => onFavoriteClick?.(favorite)}
+                                            />
+                                            <button
+                                                className="favorite-remove-btn"
+                                                title="Usuń z ulubionych"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onRemoveFavoriteById?.(favorite.stationId);
+                                                }}
+                                            >
+                                                <svg width="10" height="2" viewBox="0 0 10 2" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <line x1="0" y1="1" x2="10" y2="1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                                </svg>
+                                            </button>
+                                        </div>
                                     ))}
                                 </div>
                             )}

@@ -311,6 +311,44 @@ button { font-family: inherit; cursor: pointer; }
     max-height: 220px;
     margin-bottom: 6px;
 }
+.favorite-row {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+}
+.favorite-row .station-card {
+    flex: 1;
+    min-width: 0;
+    padding-right: 28px;
+}
+.favorite-remove-btn {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid var(--line-2);
+    background: var(--panel-dark-2);
+    color: #9CA3AF;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 1px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s, background .15s, color .15s;
+}
+.favorite-row:hover .favorite-remove-btn {
+    opacity: 1;
+}
+.favorite-remove-btn:hover {
+    background: #3B1414;
+    border-color: #7F1D1D;
+    color: #F87171;
+}
 .station-list::-webkit-scrollbar { width: 8px; }
 .station-list::-webkit-scrollbar-thumb { background: #2A2E36; border-radius: 4px; }
 .station-list::-webkit-scrollbar-track { background: transparent; }
