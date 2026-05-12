@@ -36,19 +36,25 @@ function pinSvg(fillColor, strokeColor, isSelected = false) {
   `;
 }
 
+const _iconCache = new Map();
+
 export function makeIcon(markerStatus, isSelected = false) {
+    const key = `${markerStatus ?? "DEFAULT"}-${isSelected}`;
+    if (_iconCache.has(key)) return _iconCache.get(key);
     const c = statusColor(markerStatus);
     const fill   = isSelected ? (c.selectedFill   ?? c.fill)   : c.fill;
     const stroke = isSelected ? (c.selectedStroke ?? c.stroke) : c.stroke;
     const size = isSelected ? [42, 52] : [38, 46];
     const anchor = isSelected ? [21, 50] : [19, 44];
-    return L.divIcon({
+    const icon = L.divIcon({
         className: "ev-marker",
         html: pinSvg(fill, stroke, isSelected),
         iconSize: size,
         iconAnchor: anchor,
         popupAnchor: [0, -38],
     });
+    _iconCache.set(key, icon);
+    return icon;
 }
 
 export const locationIcon = L.divIcon({

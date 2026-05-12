@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import MapView from "./components/MapView.jsx";
 import MapControls from "./components/MapControls.jsx";
@@ -79,6 +79,8 @@ function App() {
     const [stationEditLoading, setStationEditLoading] = useState(false);
     const [stationEditMessage, setStationEditMessage] = useState(null);
 
+    const [mapCenter, setMapCenter] = useState(null);
+    const [mapViewport, setMapViewport] = useState(null);
 
     const visibleStations = useMemo(() => {
         return stations.filter((station) => {
@@ -100,6 +102,26 @@ function App() {
             return true;
         });
     }, [stations, activeStatuses, advancedFilters]);
+
+    const markersOnMap = useMemo(() => {
+        if (!mapViewport || mapViewport.zoom < 8) return [];
+        const { minLat, maxLat, minLon, maxLon, centerLat, centerLon, zoom } = mapViewport;
+
+        const inView = visibleStations.filter((s) => {
+            const lat = Number(s.latitude);
+            const lon = Number(s.longitude);
+            return lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon;
+        });
+
+        const MAX = zoom >= 13 ? 600 : zoom >= 11 ? 300 : zoom >= 9 ? 150 : 80;
+        if (inView.length <= MAX) return inView;
+
+        return inView
+            .map((s) => ({ s, d: (Number(s.latitude) - centerLat) ** 2 + (Number(s.longitude) - centerLon) ** 2 }))
+            .sort((a, b) => a.d - b.d)
+            .slice(0, MAX)
+            .map(({ s }) => s);
+    }, [visibleStations, mapViewport]);
 
     useEffect(() => {
         (async () => {
@@ -144,34 +166,6 @@ function App() {
         })();
     }, [authToken]);
 
-    useEffect(() => {
-        if (!location) return;
-        if (typeof searchRadiusKm !== "number" || searchRadiusKm <= 0) return;
-
-        (async () => {
-            setStationsLoading(true);
-            setStationsError(null);
-            setSelectedStationId(null);
-            try {
-                const params = new URLSearchParams({
-                    lat: String(location.lat),
-                    lon: String(location.lon),
-                    radiusKm: String(searchRadiusKm),
-                });
-                const resp = await fetch(
-                    `${API_BASE_URL}/api/stations?${params}`,
-                );
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const data = await resp.json();
-                setStations(Array.isArray(data) ? data : []);
-            } catch (error) {
-                console.error(error);
-                setStationsError("Nie udało się pobrać stacji dla podanej lokalizacji");
-            } finally {
-                setStationsLoading(false);
-            }
-        })();
-    }, [location, searchRadiusKm]);
 
     useEffect(() => {
         if (!selectedStationId) {
@@ -621,6 +615,43 @@ function App() {
         }
     };
 
+    const viewportAbortRef = useRef(null);
+    const handleViewportChange = useCallback(async ({ minLat, maxLat, minLon, maxLon, centerLat, centerLon, zoom, shouldFetch }) => {
+        setMapCenter({ lat: centerLat, lon: centerLon });
+        setMapViewport({ minLat, maxLat, minLon, maxLon, centerLat, centerLon, zoom });
+        if (!shouldFetch || zoom < 8) return;
+        if (viewportAbortRef.current) viewportAbortRef.current.abort();
+        viewportAbortRef.current = new AbortController();
+        const signal = viewportAbortRef.current.signal;
+        setStationsLoading(true);
+        setStationsError(null);
+        try {
+            const params = new URLSearchParams({
+                minLat: String(minLat),
+                maxLat: String(maxLat),
+                minLon: String(minLon),
+                maxLon: String(maxLon),
+            });
+            const resp = await fetch(`${API_BASE_URL}/api/stations?${params}`, { signal });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            if (Array.isArray(data)) {
+                setStations((prev) => {
+                    const existingIds = new Set(prev.map((s) => s.id));
+                    const fresh = data.filter((s) => !existingIds.has(s.id));
+                    return fresh.length > 0 ? [...prev, ...fresh] : prev;
+                });
+            }
+        } catch (err) {
+            if (err.name !== "AbortError") {
+                console.error(err);
+                setStationsError("Nie udało się pobrać stacji");
+            }
+        } finally {
+            if (!signal.aborted) setStationsLoading(false);
+        }
+    }, []);
+
     const handleZoomIn  = () => window.dispatchEvent(new Event("voltspot:zoom-in"));
     const handleZoomOut = () => window.dispatchEvent(new Event("voltspot:zoom-out"));
     const handleLocate = () => {
@@ -653,6 +684,7 @@ function App() {
                 onFavoriteClick={handleFavoriteClick}
                 onRemoveFavoriteById={handleRemoveFavoriteById}
                 location={location}
+                mapCenter={mapCenter}
                 searchRadiusKm={searchRadiusKm}
                 setSearchRadiusKm={setSearchRadiusKm}
                 currentUser={currentUser}
@@ -678,9 +710,10 @@ function App() {
                 </button>
                 <MapView
                     location={location}
-                    stations={visibleStations}
+                    stations={markersOnMap}
                     selectedStationId={selectedStationId}
                     onStationClick={handleStationClick}
+                    onViewportChange={handleViewportChange}
                 />
 
                 <div className="map-top">

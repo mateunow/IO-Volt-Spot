@@ -38,40 +38,24 @@ public class StationService {
     private final StationStatusSnapshotRepository snapshotRepository;
     private final OCMClient ocmClient;
 
-    public List<StationMarkerResponse> getStations(Double lat, Double lon, Double radiusKm) {
+    public List<StationMarkerResponse> getStations(Double minLat, Double maxLat, Double minLon, Double maxLon) {
         List<Station> stations;
 
-        boolean noFilters = lat == null && lon == null && radiusKm == null;
-        boolean allFilters = lat != null && lon != null && radiusKm != null;
+        boolean noFilters = minLat == null && maxLat == null && minLon == null && maxLon == null;
+        boolean allFilters = minLat != null && maxLat != null && minLon != null && maxLon != null;
 
         if (!noFilters && !allFilters) {
-            throw new BadRequestException("Podaj albo wszystkie parametry: lat, lon, radiusKm, albo żaden");
+            throw new BadRequestException("Podaj wszystkie parametry bbox: minLat, maxLat, minLon, maxLon – albo żaden");
         }
 
         if (noFilters) {
             stations = stationRepository.findByActiveTrueOrderByIdAsc();
         } else {
-            if (radiusKm <= 0) {
-                throw new BadRequestException("radiusKm musi być większe od 0");
-            }
-
-            double latDelta = radiusKm / 111.0;
-            double lonDivisor = 111.0 * Math.cos(Math.toRadians(lat));
-            if (Math.abs(lonDivisor) < 0.000001) {
-                lonDivisor = 111.0;
-            }
-            double lonDelta = radiusKm / lonDivisor;
-
-            double minLat = lat - latDelta;
-            double maxLat = lat + latDelta;
-            double minLon = lon - lonDelta;
-            double maxLon = lon + lonDelta;
-
             try {
                 fetchStationsFromOCM(minLat, minLon, maxLat, maxLon);
             } catch (RuntimeException ex) {
-                log.warn("OCM refresh failed for lat={}, lon={}, radiusKm={}. Returning cached DB data.",
-                        lat, lon, radiusKm, ex);
+                log.warn("OCM refresh failed for bbox [{},{},{},{}]. Returning cached DB data.",
+                        minLat, minLon, maxLat, maxLon, ex);
             }
 
             stations = stationRepository.findByActiveTrueAndLatitudeBetweenAndLongitudeBetweenOrderByIdAsc(

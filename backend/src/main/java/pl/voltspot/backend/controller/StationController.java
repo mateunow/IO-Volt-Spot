@@ -23,11 +23,12 @@ public class StationController {
 
     @GetMapping
     public List<StationMarkerResponse> getStations(
-            @RequestParam(required = false) Double lat,
-            @RequestParam(required = false) Double lon,
-            @RequestParam(required = false) Double radiusKm
+            @RequestParam(required = false) Double minLat,
+            @RequestParam(required = false) Double maxLat,
+            @RequestParam(required = false) Double minLon,
+            @RequestParam(required = false) Double maxLon
     ) {
-        return stationService.getStations(lat, lon, radiusKm);
+        return stationService.getStations(minLat, maxLat, minLon, maxLon);
     }
 
     @GetMapping("/{stationId}")

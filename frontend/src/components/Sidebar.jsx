@@ -41,6 +41,7 @@ function Sidebar({
     onFavoriteClick,
     onRemoveFavoriteById,
     location,
+    mapCenter,
     searchRadiusKm,
     setSearchRadiusKm,
     currentUser,
@@ -98,13 +99,14 @@ function Sidebar({
     }, [advancedFilters]);
 
     const sortedStations = useMemo(() => {
+        const ref = mapCenter ?? location;
         return stations
             .map((s) => {
                 const lat = Number(s.latitude);
                 const lon = Number(s.longitude);
                 const dist =
-                    location && !Number.isNaN(lat) && !Number.isNaN(lon)
-                        ? haversineKm(location.lat, location.lon, lat, lon)
+                    ref && !Number.isNaN(lat) && !Number.isNaN(lon)
+                        ? haversineKm(ref.lat, ref.lon, lat, lon)
                         : null;
                 return { ...s, _distance: dist };
             })
@@ -115,7 +117,7 @@ function Sidebar({
                 if (b._distance != null) return 1;
                 return 0;
             });
-    }, [stations, location]);
+    }, [stations, mapCenter, location]);
 
     function toggleConnectorType(type) {
         const next = new Set(advancedFilters.connectorTypes);
