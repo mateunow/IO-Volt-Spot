@@ -31,7 +31,7 @@ public class StationReportService {
     private static final Logger log = LoggerFactory.getLogger(StationReportService.class);
     private static final int AUTO_CONFIRM_THRESHOLD = 3;
     private static final long CONFIRMED_DURATION_HOURS = 24;
-    private static final long PENDING_STALE_HOURS = 48;
+    private static final long PENDING_STALE_HOURS = 8;
 
     private final StationRepository stationRepository;
     private final UserRepository userRepository;

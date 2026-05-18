@@ -59,6 +59,9 @@ public class Station {
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
+    @Column(name = "admin_active_locked_until")
+    private Instant adminActiveLockedUntil;
+
     @Column(name = "last_synced_at")
     private Instant lastSyncedAt;
 

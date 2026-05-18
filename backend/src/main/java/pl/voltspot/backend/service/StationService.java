@@ -120,6 +120,7 @@ public class StationService {
         station.setOpeningHours(request.openingHours());
         station.setAccessType(request.accessType());
         station.setActive(request.active());
+        station.setAdminActiveLockedUntil(Instant.now().plus(24, java.time.temporal.ChronoUnit.HOURS));
         station.setLastSyncedAt(Instant.now());
 
         Station savedStation = stationRepository.save(station);
@@ -198,7 +199,10 @@ public class StationService {
         target.setOperatorName(source.getOperatorName());
         target.setOpeningHours(source.getOpeningHours());
         target.setAccessType(source.getAccessType());
-        target.setActive(source.isActive());
+        Instant lockedUntil = target.getAdminActiveLockedUntil();
+        if (lockedUntil == null || lockedUntil.isBefore(Instant.now())) {
+            target.setActive(source.isActive());
+        }
         target.setLastSyncedAt(Instant.now());
 
         target.getConnectors().clear();
