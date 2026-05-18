@@ -41,8 +41,6 @@ function BoundsWatcher({ onViewportChange }) {
     const map = useMapEvents({});
 
     useEffect(() => {
-        let fetchTimer;
-
         const snapshot = () => {
             const zoom = map.getZoom();
             const bounds = map.getBounds();
@@ -59,22 +57,14 @@ function BoundsWatcher({ onViewportChange }) {
         };
 
         const handler = () => {
-            // Natychmiastowa aktualizacja viewport (markery)
-            onViewportChange({ ...snapshot(), shouldFetch: false });
-            // Fetch z debounceem
-            clearTimeout(fetchTimer);
-            fetchTimer = setTimeout(() => {
-                onViewportChange({ ...snapshot(), shouldFetch: true });
-            }, 600);
+            onViewportChange(snapshot());
         };
 
         map.on("moveend", handler);
         map.on("zoomend", handler);
-        // Pierwsze załadowanie
-        onViewportChange({ ...snapshot(), shouldFetch: true });
+        onViewportChange(snapshot());
 
         return () => {
-            clearTimeout(fetchTimer);
             map.off("moveend", handler);
             map.off("zoomend", handler);
         };

@@ -24,6 +24,7 @@ public class OCMClient{
                         .path("/poi")
                         .queryParam("boundingbox", bbox)
                         .queryParam("camelCase", "true")
+                        .queryParam("maxresults", 2000)
                         .build())
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, (request, response) -> {

@@ -7,6 +7,7 @@ import FloatingSearchBar from "./components/FloatingSearchBar.jsx";
 import DetailPanel from "./components/DetailPanel.jsx";
 import LoginModal from "./components/LoginModal.jsx";
 import { IconChevronLeft, IconChevronRight } from "./components/Icons.jsx";
+import AdminOverridesPanel from "./components/AdminOverridesPanel.jsx";
 
 const API_BASE_URL = "";
 const AUTH_TOKEN_KEY = "voltspot_auth_token";
@@ -35,6 +36,13 @@ function readStoredUser() {
     } catch {
         return null;
     }
+}
+
+function resolveMarkerStatusFromOverride(override) {
+    if (!override) return null;
+    if (override.state === "CONFIRMED") return override.reportedStatus === "NOT_WORKING" ? "DISABLED" : "WORKING";
+    if (override.state === "PENDING")   return override.reportedStatus === "NOT_WORKING" ? "DISABLED_UNCONFIRMED" : "WORKING_UNCONFIRMED";
+    return null;
 }
 
 function App() {
@@ -82,6 +90,11 @@ function App() {
     const [mapCenter, setMapCenter] = useState(null);
     const [mapViewport, setMapViewport] = useState(null);
 
+    const [reportSubmitting, setReportSubmitting] = useState(false);
+    const [reportMessage, setReportMessage] = useState(null);
+    const [adminOverrides, setAdminOverrides] = useState([]);
+    const [adminOverridesLoading, setAdminOverridesLoading] = useState(false);
+
     const visibleStations = useMemo(() => {
         return stations.filter((station) => {
             if (activeStatuses.size > 0 && !activeStatuses.has(station.markerStatus ?? "DEFAULT")) return false;
@@ -107,10 +120,13 @@ function App() {
         if (!mapViewport || mapViewport.zoom < 8) return [];
         const { minLat, maxLat, minLon, maxLon, centerLat, centerLon, zoom } = mapViewport;
 
+        const latPad = (maxLat - minLat) * 0.4;
+        const lonPad = (maxLon - minLon) * 0.4;
         const inView = visibleStations.filter((s) => {
             const lat = Number(s.latitude);
             const lon = Number(s.longitude);
-            return lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon;
+            return lat >= minLat - latPad && lat <= maxLat + latPad
+                && lon >= minLon - lonPad && lon <= maxLon + lonPad;
         });
 
         const MAX = zoom >= 13 ? 600 : zoom >= 11 ? 300 : zoom >= 9 ? 150 : 80;
@@ -274,7 +290,99 @@ function App() {
 
     useEffect(() => {
         loadUserFavorites();
+        if (currentUser?.role === "ADMIN") loadAdminOverrides();
     }, [authToken]);
+
+    const loadAdminOverrides = async () => {
+        if (!authToken) return;
+        setAdminOverridesLoading(true);
+        try {
+            const resp = await fetch(`${API_BASE_URL}/api/admin/overrides`, {
+                headers: buildAuthHeaders(authToken),
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            setAdminOverrides(await resp.json());
+        } catch (err) {
+            console.error("Failed to load overrides", err);
+        } finally {
+            setAdminOverridesLoading(false);
+        }
+    };
+
+    const handleSubmitReport = async (reportedStatus) => {
+        if (!selectedStationId || !authToken) return;
+        setReportSubmitting(true);
+        setReportMessage(null);
+        try {
+            const resp = await fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/report`, {
+                method: "POST",
+                headers: buildAuthHeaders(authToken, { "Content-Type": "application/json" }),
+                body: JSON.stringify({ reportedStatus }),
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.message || `HTTP ${resp.status}`);
+            }
+            const override = await resp.json();
+            setReportMessage("Zgłoszenie wysłane. Dziękujemy!");
+            setStations((prev) =>
+                prev.map((s) =>
+                    s.id === selectedStationId
+                        ? { ...s, communityOverride: override, markerStatus: resolveMarkerStatusFromOverride(override) }
+                        : s,
+                ),
+            );
+            if (currentUser?.role === "ADMIN") loadAdminOverrides();
+        } catch (err) {
+            setReportMessage(err.message || "Błąd podczas wysyłania zgłoszenia.");
+        } finally {
+            setReportSubmitting(false);
+        }
+    };
+
+    const handleConfirmOverride = async (overrideId) => {
+        try {
+            const resp = await fetch(`${API_BASE_URL}/api/admin/overrides/${overrideId}/confirm`, {
+                method: "POST",
+                headers: buildAuthHeaders(authToken),
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            await loadAdminOverrides();
+            const updated = await resp.json();
+            setStations((prev) =>
+                prev.map((s) =>
+                    s.id === updated.stationId
+                        ? { ...s, communityOverride: updated, markerStatus: resolveMarkerStatusFromOverride(updated) }
+                        : s,
+                ),
+            );
+        } catch (err) {
+            console.error("Confirm override failed", err);
+        }
+    };
+
+    const handleRejectOverride = async (overrideId) => {
+        try {
+            const override = adminOverrides.find((o) => o.id === overrideId);
+            const resp = await fetch(`${API_BASE_URL}/api/admin/overrides/${overrideId}/reject`, {
+                method: "POST",
+                headers: buildAuthHeaders(authToken),
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            setAdminOverrides((prev) => prev.filter((o) => o.id !== overrideId));
+            if (override) {
+                setStations((prev) =>
+                    prev.map((s) =>
+                        s.id === override.stationId
+                            ? { ...s, communityOverride: null }
+                            : s,
+                    ),
+                );
+            }
+        } catch (err) {
+            console.error("Reject override failed", err);
+        }
+    };
 
     const refreshFeedbacks = async (stationId) => {
         try {
@@ -615,41 +723,9 @@ function App() {
         }
     };
 
-    const viewportAbortRef = useRef(null);
-    const handleViewportChange = useCallback(async ({ minLat, maxLat, minLon, maxLon, centerLat, centerLon, zoom, shouldFetch }) => {
+    const handleViewportChange = useCallback(({ minLat, maxLat, minLon, maxLon, centerLat, centerLon, zoom }) => {
         setMapCenter({ lat: centerLat, lon: centerLon });
         setMapViewport({ minLat, maxLat, minLon, maxLon, centerLat, centerLon, zoom });
-        if (!shouldFetch || zoom < 8) return;
-        if (viewportAbortRef.current) viewportAbortRef.current.abort();
-        viewportAbortRef.current = new AbortController();
-        const signal = viewportAbortRef.current.signal;
-        setStationsLoading(true);
-        setStationsError(null);
-        try {
-            const params = new URLSearchParams({
-                minLat: String(minLat),
-                maxLat: String(maxLat),
-                minLon: String(minLon),
-                maxLon: String(maxLon),
-            });
-            const resp = await fetch(`${API_BASE_URL}/api/stations?${params}`, { signal });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
-            if (Array.isArray(data)) {
-                setStations((prev) => {
-                    const existingIds = new Set(prev.map((s) => s.id));
-                    const fresh = data.filter((s) => !existingIds.has(s.id));
-                    return fresh.length > 0 ? [...prev, ...fresh] : prev;
-                });
-            }
-        } catch (err) {
-            if (err.name !== "AbortError") {
-                console.error(err);
-                setStationsError("Nie udało się pobrać stacji");
-            }
-        } finally {
-            if (!signal.aborted) setStationsLoading(false);
-        }
     }, []);
 
     const handleZoomIn  = () => window.dispatchEvent(new Event("voltspot:zoom-in"));
@@ -722,6 +798,7 @@ function App() {
                         searchRadiusKm={searchRadiusKm}
                         setSearchRadiusKm={setSearchRadiusKm}
                         onStationClick={handleStationClick}
+                        stations={stations}
                     />
                 </div>
 
@@ -763,7 +840,20 @@ function App() {
                 onCancelStationEdit={handleCancelStationEdit}
                 onSaveStationEdit={handleSaveStationEdit}
                 onStationEditChange={handleStationEditChange}
+                onSubmitReport={handleSubmitReport}
             />
+
+            {currentUser?.role === "ADMIN" && (
+                <div className="admin-overrides-panel">
+                    <div className="admin-overrides-header">Zgłoszenia statusów stacji</div>
+                    <AdminOverridesPanel
+                        overrides={adminOverrides}
+                        loading={adminOverridesLoading}
+                        onConfirm={handleConfirmOverride}
+                        onReject={handleRejectOverride}
+                    />
+                </div>
+            )}
 
             <LoginModal
                 open={loginModalOpen}

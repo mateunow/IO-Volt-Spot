@@ -2,6 +2,7 @@ package pl.voltspot.backend.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import pl.voltspot.backend.entity.StationStatusSnapshot;
 
 import java.util.List;
@@ -13,14 +14,11 @@ public interface StationStatusSnapshotRepository extends JpaRepository<StationSt
 
     List<StationStatusSnapshot> findByStationIdOrderByRecordedAtDesc(Long stationId);
 
-    @Query("""
-            SELECT s FROM StationStatusSnapshot s
-            WHERE s.station.id IN :stationIds
-              AND s.recordedAt = (
-                  SELECT MAX(s2.recordedAt)
-                  FROM StationStatusSnapshot s2
-                  WHERE s2.station.id = s.station.id
-              )
-            """)
-    List<StationStatusSnapshot> findLatestForStations(List<Long> stationIds);
+    @Query(value = """
+            SELECT DISTINCT ON (station_id) *
+            FROM station_status_snapshots
+            WHERE station_id IN :stationIds
+            ORDER BY station_id, recorded_at DESC
+            """, nativeQuery = true)
+    List<StationStatusSnapshot> findLatestForStations(@Param("stationIds") List<Long> stationIds);
 }

@@ -9,11 +9,14 @@ import pl.voltspot.backend.dto.station.StationDetailsResponse;
 import pl.voltspot.backend.dto.station.StationMarkerResponse;
 import pl.voltspot.backend.dto.station.StationStatusSnapshotResponse;
 import pl.voltspot.backend.dto.station.UpdateStationRequest;
+import pl.voltspot.backend.entity.CommunityStatusOverride;
 import pl.voltspot.backend.entity.Station;
 import pl.voltspot.backend.entity.StationStatusSnapshot;
+import pl.voltspot.backend.enums.OverrideState;
 import pl.voltspot.backend.exceptions.BadRequestException;
 import pl.voltspot.backend.exceptions.NotFoundException;
 import pl.voltspot.backend.mapper.StationMapper;
+import pl.voltspot.backend.repository.CommunityStatusOverrideRepository;
 import pl.voltspot.backend.repository.StationRepository;
 import pl.voltspot.backend.repository.StationStatusSnapshotRepository;
 
@@ -36,6 +39,7 @@ public class StationService {
 
     private final StationRepository stationRepository;
     private final StationStatusSnapshotRepository snapshotRepository;
+    private final CommunityStatusOverrideRepository overrideRepository;
     private final OCMClient ocmClient;
 
     public List<StationMarkerResponse> getStations(Double minLat, Double maxLat, Double minLon, Double maxLon) {
@@ -51,13 +55,6 @@ public class StationService {
         if (noFilters) {
             stations = stationRepository.findByActiveTrueOrderByIdAsc();
         } else {
-            try {
-                fetchStationsFromOCM(minLat, minLon, maxLat, maxLon);
-            } catch (RuntimeException ex) {
-                log.warn("OCM refresh failed for bbox [{},{},{},{}]. Returning cached DB data.",
-                        minLat, minLon, maxLat, maxLon, ex);
-            }
-
             stations = stationRepository.findByActiveTrueAndLatitudeBetweenAndLongitudeBetweenOrderByIdAsc(
                     minLat, maxLat, minLon, maxLon
             );
@@ -72,6 +69,7 @@ public class StationService {
         }
 
         List<Long> ids = stations.stream().map(Station::getId).toList();
+
         Map<Long, StationStatusSnapshot> latestByStation = snapshotRepository
                 .findLatestForStations(ids)
                 .stream()
@@ -81,10 +79,14 @@ public class StationService {
                         (a, b) -> a
                 ));
 
+        Map<Long, CommunityStatusOverride> activeOverrides =
+                overrideRepository.findActiveByStationIds(ids);
+
         return stations.stream()
                 .map(station -> StationMapper.toMarkerResponse(
                         station,
-                        latestByStation.get(station.getId())
+                        latestByStation.get(station.getId()),
+                        activeOverrides.get(station.getId())
                 ))
                 .toList();
     }

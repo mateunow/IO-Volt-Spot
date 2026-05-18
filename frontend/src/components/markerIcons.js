@@ -2,10 +2,12 @@
 import L from "leaflet";
 
 export const STATUS_COLORS = {
-    WORKING:  { fill: "#22C55E", stroke: "#15803D", selectedFill: "#15803D", selectedStroke: "#14532D", label: "Dostępna" },
-    OCCUPIED: { fill: "#F97316", stroke: "#C2410C", selectedFill: "#C2410C", selectedStroke: "#7C2D12", label: "Zajęta" },
-    DISABLED: { fill: "#F9A8B4", stroke: "#BE185D", selectedFill: "#BE185D", selectedStroke: "#831843", label: "Wyłączona" },
-    DEFAULT:  { fill: "#0F1115", stroke: "#000000", selectedFill: "#374151", selectedStroke: "#111827", label: "Nieznany" },
+    WORKING:              { fill: "#22C55E", stroke: "#15803D", selectedFill: "#15803D", selectedStroke: "#14532D", label: "Dostępna" },
+    OCCUPIED:             { fill: "#F97316", stroke: "#C2410C", selectedFill: "#C2410C", selectedStroke: "#7C2D12", label: "Zajęta" },
+    DISABLED:             { fill: "#F9A8B4", stroke: "#BE185D", selectedFill: "#BE185D", selectedStroke: "#831843", label: "Wyłączona" },
+    DEFAULT:              { fill: "#0F1115", stroke: "#000000", selectedFill: "#374151", selectedStroke: "#111827", label: "Nieznany" },
+    WORKING_UNCONFIRMED:  { fill: "#86EFAC", stroke: "#15803D", selectedFill: "#4ADE80", selectedStroke: "#15803D", label: "Dostępna (niezatwierdzono)" },
+    DISABLED_UNCONFIRMED: { fill: "#FECDD3", stroke: "#BE185D", selectedFill: "#FDA4AF", selectedStroke: "#9D174D", label: "Wyłączona (niezatwierdzono)" },
 };
 
 export function statusColor(markerStatus) {
