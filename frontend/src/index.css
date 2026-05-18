@@ -1110,6 +1110,103 @@ button { font-family: inherit; cursor: pointer; }
     font-size: 12px;
 }
 
+/* ============ ADMIN REPORTS IN SIDEBAR ============ */
+.admin-reports-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding-bottom: 2px;
+}
+.admin-report-card {
+    background: var(--panel-dark-2);
+    border: 1px solid var(--line-2);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.admin-report-station {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.admin-report-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #E8EAED;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.admin-report-city {
+    font-size: 11px;
+    color: var(--muted-2);
+    font-family: var(--mono);
+}
+.admin-report-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.admin-report-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+.admin-report-badge.good {
+    background: rgba(22, 163, 74, 0.15);
+    color: #4ADE80;
+}
+.admin-report-badge.bad {
+    background: rgba(239, 68, 68, 0.15);
+    color: #F87171;
+}
+.admin-report-counts {
+    font-size: 11px;
+    color: var(--muted-2);
+    font-family: var(--mono);
+}
+.admin-report-date {
+    font-size: 10px;
+    color: var(--muted-2);
+    font-family: var(--mono);
+    margin-left: auto;
+}
+.admin-report-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+.admin-report-btn {
+    padding: 6px 0;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid;
+    transition: all .15s;
+}
+.admin-report-btn.confirm {
+    background: rgba(22, 163, 74, 0.12);
+    border-color: rgba(74, 222, 128, 0.3);
+    color: #4ADE80;
+}
+.admin-report-btn.confirm:hover {
+    background: rgba(22, 163, 74, 0.22);
+}
+.admin-report-btn.reject {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(248, 113, 113, 0.3);
+    color: #F87171;
+}
+.admin-report-btn.reject:hover {
+    background: rgba(239, 68, 68, 0.2);
+}
+
 /* Custom marker container */
 .ev-marker {
     background: transparent;

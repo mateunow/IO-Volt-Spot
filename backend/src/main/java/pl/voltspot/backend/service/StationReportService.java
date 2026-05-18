@@ -22,6 +22,7 @@ import pl.voltspot.backend.repository.UserRepository;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -53,22 +54,36 @@ public class StationReportService {
                     return fresh;
                 });
 
-        if (override.getId() != null) {
-            boolean alreadyVoted = reportRepository
-                    .findByStationIdAndReporterIdAndOverrideId(stationId, reporterId, override.getId())
-                    .isPresent();
-            if (alreadyVoted) {
-                throw new BadRequestException("Już zgłosiłeś status tej stacji.");
+        Optional<StationReport> existingReport = override.getId() != null
+                ? reportRepository.findByStationIdAndReporterIdAndOverrideId(stationId, reporterId, override.getId())
+                : Optional.empty();
+
+        if (existingReport.isPresent()) {
+            StationReport existing = existingReport.get();
+            if (existing.getReportedStatus() == reportedStatus) {
+                throw new BadRequestException("Już zgłosiłeś ten status tej stacji.");
+            }
+            if (existing.getReportedStatus() == ReportedStatus.WORKING) {
+                override.setWorkingCount(override.getWorkingCount() - 1);
+            } else {
+                override.setNotWorkingCount(override.getNotWorkingCount() - 1);
+            }
+            if (reportedStatus == ReportedStatus.WORKING) {
+                override.setWorkingCount(override.getWorkingCount() + 1);
+            } else {
+                override.setNotWorkingCount(override.getNotWorkingCount() + 1);
+            }
+            existing.setReportedStatus(reportedStatus);
+            reportRepository.save(existing);
+        } else {
+            if (reportedStatus == ReportedStatus.WORKING) {
+                override.setWorkingCount(override.getWorkingCount() + 1);
+            } else {
+                override.setNotWorkingCount(override.getNotWorkingCount() + 1);
             }
         }
 
-        if (reportedStatus == ReportedStatus.WORKING) {
-            override.setWorkingCount(override.getWorkingCount() + 1);
-        } else {
-            override.setNotWorkingCount(override.getNotWorkingCount() + 1);
-        }
-
-        ReportedStatus majority = computeMajority(override);
+        ReportedStatus majority = computeMajority(override, reportedStatus);
         override.setReportedStatus(majority);
 
         int majorityCount = majority == ReportedStatus.WORKING
@@ -84,14 +99,23 @@ public class StationReportService {
 
         CommunityStatusOverride saved = overrideRepository.save(override);
 
-        StationReport report = new StationReport();
-        report.setStation(station);
-        report.setReporter(reporter);
-        report.setReportedStatus(reportedStatus);
-        report.setOverride(saved);
-        reportRepository.save(report);
+        if (existingReport.isEmpty()) {
+            StationReport report = new StationReport();
+            report.setStation(station);
+            report.setReporter(reporter);
+            report.setReportedStatus(reportedStatus);
+            report.setOverride(saved);
+            reportRepository.save(report);
+        }
 
         return toResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CommunityOverrideResponse> getActiveOverrides() {
+        return overrideRepository.findAllActive().stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -150,10 +174,10 @@ public class StationReportService {
         return override;
     }
 
-    private static ReportedStatus computeMajority(CommunityStatusOverride override) {
+    private static ReportedStatus computeMajority(CommunityStatusOverride override, ReportedStatus latestReported) {
         if (override.getWorkingCount() > override.getNotWorkingCount()) return ReportedStatus.WORKING;
         if (override.getNotWorkingCount() > override.getWorkingCount()) return ReportedStatus.NOT_WORKING;
-        return override.getReportedStatus();
+        return latestReported;
     }
 
     public CommunityOverrideResponse toResponse(CommunityStatusOverride o) {

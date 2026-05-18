@@ -3,6 +3,11 @@ import StationCard from "./StationCard.jsx";
 import { IconBolt, IconChevronRight } from "./Icons.jsx";
 import { STATUS_COLORS } from "./markerIcons.js";
 
+function formatDate(iso) {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
+}
+
 const RADIUS_OPTIONS = [2, 10, 25, 50];
 
 const STATUS_FILTERS = [
@@ -55,10 +60,16 @@ function Sidebar({
     onAdvancedFilterChange,
     onClearAdvancedFilters,
     onToggleSidebar,
+    isAdmin = false,
+    adminOverrides = [],
+    adminOverridesLoading = false,
+    onConfirmOverride,
+    onRejectOverride,
 }) {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [favoritesCollapsed, setFavoritesCollapsed] = useState(true);
     const [advancedCollapsed, setAdvancedCollapsed] = useState(true);
+    const [adminCollapsed, setAdminCollapsed] = useState(false);
     const profileRef = useRef(null);
 
     useEffect(() => {
@@ -403,6 +414,68 @@ function Sidebar({
                                 </div>
                             )}
                         </>
+                    )}
+                </div>
+            )}
+
+            {isAdmin && (
+                <div className="filters-section">
+                    <div className="filters-header">
+                        <button
+                            type="button"
+                            className="section-toggle"
+                            onClick={() => setAdminCollapsed((v) => !v)}
+                            aria-expanded={!adminCollapsed}
+                        >
+                            <span>Zgłoszenia statusów</span>
+                            <span className="count">{adminOverrides.length}</span>
+                            <IconChevronRight
+                                className={`section-toggle-icon${adminCollapsed ? "" : " open"}`}
+                            />
+                        </button>
+                    </div>
+                    {!adminCollapsed && (
+                        <div className="admin-reports-list">
+                            {adminOverridesLoading && (
+                                <div className="empty-state">Ładowanie zgłoszeń…</div>
+                            )}
+                            {!adminOverridesLoading && adminOverrides.length === 0 && (
+                                <div className="empty-state">Brak oczekujących zgłoszeń</div>
+                            )}
+                            {adminOverrides.map((o) => (
+                                <div key={o.id} className="admin-report-card">
+                                    <div className="admin-report-station">
+                                        <span className="admin-report-name">{o.stationName}</span>
+                                        {o.stationCity && (
+                                            <span className="admin-report-city">{o.stationCity}</span>
+                                        )}
+                                    </div>
+                                    <div className="admin-report-meta">
+                                        <span className={`admin-report-badge ${o.reportedStatus === "NOT_WORKING" ? "bad" : "good"}`}>
+                                            {o.reportedStatus === "NOT_WORKING" ? "Nie działa" : "Działa"}
+                                        </span>
+                                        <span className="admin-report-counts">
+                                            ✓ {o.workingCount} · ✗ {o.notWorkingCount}
+                                        </span>
+                                        <span className="admin-report-date">{formatDate(o.createdAt)}</span>
+                                    </div>
+                                    <div className="admin-report-actions">
+                                        <button
+                                            className="admin-report-btn confirm"
+                                            onClick={() => onConfirmOverride?.(o.id)}
+                                        >
+                                            Zatwierdź
+                                        </button>
+                                        <button
+                                            className="admin-report-btn reject"
+                                            onClick={() => onRejectOverride?.(o.id)}
+                                        >
+                                            Odrzuć
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </div>
             )}

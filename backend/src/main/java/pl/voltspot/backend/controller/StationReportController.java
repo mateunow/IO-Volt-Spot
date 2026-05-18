@@ -31,6 +31,11 @@ public class StationReportController {
         return reportService.submitReport(stationId, userId, request.reportedStatus());
     }
 
+    @GetMapping("/api/community/overrides/active")
+    public List<CommunityOverrideResponse> getActiveOverrides() {
+        return reportService.getActiveOverrides();
+    }
+
     @GetMapping("/api/admin/overrides")
     @RequireRole({UserRole.ADMIN})
     public List<CommunityOverrideResponse> getPendingOverrides() {

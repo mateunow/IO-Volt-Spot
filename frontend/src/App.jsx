@@ -7,7 +7,6 @@ import FloatingSearchBar from "./components/FloatingSearchBar.jsx";
 import DetailPanel from "./components/DetailPanel.jsx";
 import LoginModal from "./components/LoginModal.jsx";
 import { IconChevronLeft, IconChevronRight } from "./components/Icons.jsx";
-import AdminOverridesPanel from "./components/AdminOverridesPanel.jsx";
 
 const API_BASE_URL = "";
 const AUTH_TOKEN_KEY = "voltspot_auth_token";
@@ -91,13 +90,32 @@ function App() {
     const [mapViewport, setMapViewport] = useState(null);
 
     const [reportSubmitting, setReportSubmitting] = useState(false);
-    const [reportMessage, setReportMessage] = useState(null);
     const [adminOverrides, setAdminOverrides] = useState([]);
     const [adminOverridesLoading, setAdminOverridesLoading] = useState(false);
+    const [activeOverrides, setActiveOverrides] = useState([]);
+    const lastEtagRef = useRef(null);
+
+    const effectiveStations = useMemo(() => {
+        if (activeOverrides.length === 0) return stations;
+        const overrideMap = new Map(activeOverrides.map(o => [o.stationId, o]));
+        return stations.map(s => {
+            const o = overrideMap.get(s.id);
+            return o ? { ...s, communityOverride: o, markerStatus: resolveMarkerStatusFromOverride(o) } : s;
+        });
+    }, [stations, activeOverrides]);
+
+    const STATUS_FILTER_GROUP = {
+        WORKING_UNCONFIRMED: "WORKING",
+        DISABLED_UNCONFIRMED: "DISABLED",
+    };
 
     const visibleStations = useMemo(() => {
-        return stations.filter((station) => {
-            if (activeStatuses.size > 0 && !activeStatuses.has(station.markerStatus ?? "DEFAULT")) return false;
+        return effectiveStations.filter((station) => {
+            if (activeStatuses.size > 0) {
+                const status = station.markerStatus ?? "DEFAULT";
+                const group = STATUS_FILTER_GROUP[status] ?? status;
+                if (!activeStatuses.has(group)) return false;
+            }
 
             const { connectorTypes, minPowerKw, only24h, operators } = advancedFilters;
 
@@ -114,7 +132,7 @@ function App() {
 
             return true;
         });
-    }, [stations, activeStatuses, advancedFilters]);
+    }, [effectiveStations, activeStatuses, advancedFilters]);
 
     const markersOnMap = useMemo(() => {
         if (!mapViewport || mapViewport.zoom < 8) return [];
@@ -139,23 +157,46 @@ function App() {
             .map(({ s }) => s);
     }, [visibleStations, mapViewport]);
 
-    useEffect(() => {
-        (async () => {
-            setStationsLoading(true);
-            setStationsError(null);
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/stations`);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const data = await response.json();
-                setStations(Array.isArray(data) ? data : []);
-            } catch (error) {
-                console.error(error);
-                setStationsError("Nie udało się pobrać listy stacji");
-            } finally {
-                setStationsLoading(false);
-            }
-        })();
+    const fetchStations = useCallback(async (silent = false) => {
+        if (!silent) setStationsLoading(true);
+        setStationsError(null);
+        try {
+            const headers = lastEtagRef.current ? { "If-None-Match": lastEtagRef.current } : {};
+            const response = await fetch(`${API_BASE_URL}/api/stations`, { headers });
+            if (response.status === 304) return;
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const etag = response.headers.get("ETag");
+            if (etag) lastEtagRef.current = etag;
+            const data = await response.json();
+            setStations(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error(error);
+            if (!silent) setStationsError("Nie udało się pobrać listy stacji");
+        } finally {
+            if (!silent) setStationsLoading(false);
+        }
     }, []);
+
+    const fetchActiveOverrides = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/community/overrides/active`);
+            if (res.ok) setActiveOverrides(await res.json());
+        } catch (err) {
+            console.error("Failed to fetch active overrides", err);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchStations();
+        const id = setInterval(() => fetchStations(true), 2 * 60 * 1000);
+        return () => clearInterval(id);
+    }, [fetchStations]);
+
+    useEffect(() => {
+        fetchActiveOverrides();
+        const id = setInterval(fetchActiveOverrides, 60 * 1000);
+        return () => clearInterval(id);
+    }, [fetchActiveOverrides]);
 
     useEffect(() => {
         if (!authToken) {
@@ -245,9 +286,9 @@ function App() {
             openingHours: stationDetails.openingHours ?? "",
             accessType: stationDetails.accessType ?? "",
             active: Boolean(stationDetails.active),
+            adminStatus: null,
         });
         setStationEditMode(false);
-        setStationEditMessage(null);
     }, [stationDetails]);
 
     useEffect(() => {
@@ -312,7 +353,6 @@ function App() {
     const handleSubmitReport = async (reportedStatus) => {
         if (!selectedStationId || !authToken) return;
         setReportSubmitting(true);
-        setReportMessage(null);
         try {
             const resp = await fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/report`, {
                 method: "POST",
@@ -324,17 +364,13 @@ function App() {
                 throw new Error(err.message || `HTTP ${resp.status}`);
             }
             const override = await resp.json();
-            setReportMessage("Zgłoszenie wysłane. Dziękujemy!");
-            setStations((prev) =>
-                prev.map((s) =>
-                    s.id === selectedStationId
-                        ? { ...s, communityOverride: override, markerStatus: resolveMarkerStatusFromOverride(override) }
-                        : s,
-                ),
-            );
+            setActiveOverrides(prev => [
+                ...prev.filter(o => o.stationId !== selectedStationId),
+                override,
+            ]);
             if (currentUser?.role === "ADMIN") loadAdminOverrides();
         } catch (err) {
-            setReportMessage(err.message || "Błąd podczas wysyłania zgłoszenia.");
+            console.error("Report failed", err);
         } finally {
             setReportSubmitting(false);
         }
@@ -347,15 +383,9 @@ function App() {
                 headers: buildAuthHeaders(authToken),
             });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            await loadAdminOverrides();
             const updated = await resp.json();
-            setStations((prev) =>
-                prev.map((s) =>
-                    s.id === updated.stationId
-                        ? { ...s, communityOverride: updated, markerStatus: resolveMarkerStatusFromOverride(updated) }
-                        : s,
-                ),
-            );
+            setActiveOverrides(prev => prev.map(o => o.id === overrideId ? updated : o));
+            await loadAdminOverrides();
         } catch (err) {
             console.error("Confirm override failed", err);
         }
@@ -363,22 +393,13 @@ function App() {
 
     const handleRejectOverride = async (overrideId) => {
         try {
-            const override = adminOverrides.find((o) => o.id === overrideId);
             const resp = await fetch(`${API_BASE_URL}/api/admin/overrides/${overrideId}/reject`, {
                 method: "POST",
                 headers: buildAuthHeaders(authToken),
             });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            setAdminOverrides((prev) => prev.filter((o) => o.id !== overrideId));
-            if (override) {
-                setStations((prev) =>
-                    prev.map((s) =>
-                        s.id === override.stationId
-                            ? { ...s, communityOverride: null }
-                            : s,
-                    ),
-                );
-            }
+            setAdminOverrides(prev => prev.filter(o => o.id !== overrideId));
+            setActiveOverrides(prev => prev.filter(o => o.id !== overrideId));
         } catch (err) {
             console.error("Reject override failed", err);
         }
@@ -666,17 +687,18 @@ function App() {
         setStationEditLoading(true);
         setStationEditMessage(null);
 
+        const str = (v) => (v ?? "").toString().trim();
         try {
             const payload = {
-                name: stationEditForm.name.trim(),
+                name: str(stationEditForm.name),
                 latitude,
                 longitude,
-                addressLine: stationEditForm.addressLine.trim() || null,
-                city: stationEditForm.city.trim() || null,
-                country: stationEditForm.country.trim() || null,
-                operatorName: stationEditForm.operatorName.trim() || null,
-                openingHours: stationEditForm.openingHours.trim() || null,
-                accessType: stationEditForm.accessType.trim() || null,
+                addressLine: str(stationEditForm.addressLine) || null,
+                city: str(stationEditForm.city) || null,
+                country: str(stationEditForm.country) || null,
+                operatorName: str(stationEditForm.operatorName) || null,
+                openingHours: str(stationEditForm.openingHours) || null,
+                accessType: str(stationEditForm.accessType) || null,
                 active: Boolean(stationEditForm.active),
             };
 
@@ -714,6 +736,29 @@ function App() {
                         : station,
                 ),
             );
+
+            const reportedStatus = stationEditForm.active ? "WORKING" : "NOT_WORKING";
+            const reportResp = await fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/report`, {
+                method: "POST",
+                headers: buildAuthHeaders(authToken, { "Content-Type": "application/json" }),
+                body: JSON.stringify({ reportedStatus }),
+            });
+            if (reportResp.ok) {
+                const override = await reportResp.json();
+                const confirmResp = await fetch(`${API_BASE_URL}/api/admin/overrides/${override.id}/confirm`, {
+                    method: "POST",
+                    headers: buildAuthHeaders(authToken),
+                });
+                if (confirmResp.ok) {
+                    const confirmed = await confirmResp.json();
+                    setActiveOverrides(prev => [
+                        ...prev.filter(o => o.stationId !== selectedStationId),
+                        confirmed,
+                    ]);
+                    setAdminOverrides(prev => prev.filter(o => o.id !== override.id));
+                }
+            }
+
             setStationEditMode(false);
             setStationEditMessage("Zapisano zmiany stacji");
         } catch (err) {
@@ -745,7 +790,7 @@ function App() {
     const [sidebarOpen, setSidebarOpen] = useState(true);
 
     const detailOpen = !!selectedStationId;
-    const selectedStation = stations.find((s) => s.id === selectedStationId);
+    const selectedStation = effectiveStations.find((s) => s.id === selectedStationId);
 
     return (
         <div className={`app${sidebarOpen ? "" : " sidebar-hidden"}`}>
@@ -774,6 +819,11 @@ function App() {
                 onAdvancedFilterChange={handleAdvancedFilterChange}
                 onClearAdvancedFilters={handleClearAdvancedFilters}
                 onToggleSidebar={() => setSidebarOpen((v) => !v)}
+                isAdmin={currentUser?.role === "ADMIN"}
+                adminOverrides={adminOverrides}
+                adminOverridesLoading={adminOverridesLoading}
+                onConfirmOverride={handleConfirmOverride}
+                onRejectOverride={handleRejectOverride}
             />
 
             <main className={`map-area${detailOpen ? " detail-open" : ""}`}>
@@ -788,6 +838,7 @@ function App() {
                     location={location}
                     stations={markersOnMap}
                     selectedStationId={selectedStationId}
+                    selectedStation={selectedStation}
                     onStationClick={handleStationClick}
                     onViewportChange={handleViewportChange}
                 />
@@ -842,18 +893,6 @@ function App() {
                 onStationEditChange={handleStationEditChange}
                 onSubmitReport={handleSubmitReport}
             />
-
-            {currentUser?.role === "ADMIN" && (
-                <div className="admin-overrides-panel">
-                    <div className="admin-overrides-header">Zgłoszenia statusów stacji</div>
-                    <AdminOverridesPanel
-                        overrides={adminOverrides}
-                        loading={adminOverridesLoading}
-                        onConfirm={handleConfirmOverride}
-                        onReject={handleRejectOverride}
-                    />
-                </div>
-            )}
 
             <LoginModal
                 open={loginModalOpen}

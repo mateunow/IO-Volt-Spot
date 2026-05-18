@@ -9,14 +9,11 @@ import pl.voltspot.backend.dto.station.StationDetailsResponse;
 import pl.voltspot.backend.dto.station.StationMarkerResponse;
 import pl.voltspot.backend.dto.station.StationStatusSnapshotResponse;
 import pl.voltspot.backend.dto.station.UpdateStationRequest;
-import pl.voltspot.backend.entity.CommunityStatusOverride;
 import pl.voltspot.backend.entity.Station;
 import pl.voltspot.backend.entity.StationStatusSnapshot;
-import pl.voltspot.backend.enums.OverrideState;
 import pl.voltspot.backend.exceptions.BadRequestException;
 import pl.voltspot.backend.exceptions.NotFoundException;
 import pl.voltspot.backend.mapper.StationMapper;
-import pl.voltspot.backend.repository.CommunityStatusOverrideRepository;
 import pl.voltspot.backend.repository.StationRepository;
 import pl.voltspot.backend.repository.StationStatusSnapshotRepository;
 
@@ -39,7 +36,6 @@ public class StationService {
 
     private final StationRepository stationRepository;
     private final StationStatusSnapshotRepository snapshotRepository;
-    private final CommunityStatusOverrideRepository overrideRepository;
     private final OCMClient ocmClient;
 
     public List<StationMarkerResponse> getStations(Double minLat, Double maxLat, Double minLon, Double maxLon) {
@@ -64,9 +60,7 @@ public class StationService {
     }
 
     private List<StationMarkerResponse> toMarkerResponsesWithStatus(List<Station> stations) {
-        if (stations.isEmpty()) {
-            return List.of();
-        }
+        if (stations.isEmpty()) return List.of();
 
         List<Long> ids = stations.stream().map(Station::getId).toList();
 
@@ -79,14 +73,10 @@ public class StationService {
                         (a, b) -> a
                 ));
 
-        Map<Long, CommunityStatusOverride> activeOverrides =
-                overrideRepository.findActiveByStationIds(ids);
-
         return stations.stream()
                 .map(station -> StationMapper.toMarkerResponse(
                         station,
-                        latestByStation.get(station.getId()),
-                        activeOverrides.get(station.getId())
+                        latestByStation.get(station.getId())
                 ))
                 .toList();
     }

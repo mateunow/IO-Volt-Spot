@@ -2,13 +2,10 @@ package pl.voltspot.backend.mapper;
 
 import pl.voltspot.backend.dto.external.ExternalOCMStation;
 import pl.voltspot.backend.dto.feedback.StationFeedbackResponse;
-import pl.voltspot.backend.dto.report.CommunityOverrideResponse;
 import pl.voltspot.backend.dto.station.*;
 import pl.voltspot.backend.dto.user.UserResponse;
 import pl.voltspot.backend.entity.*;
 import pl.voltspot.backend.entity.User;
-import pl.voltspot.backend.enums.OverrideState;
-import pl.voltspot.backend.enums.ReportedStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -36,8 +33,7 @@ public final class StationMapper {
         );
     }
 
-    public static StationMarkerResponse toMarkerResponse(Station station, StationStatusSnapshot snapshot,
-                                                          CommunityStatusOverride activeOverride) {
+    public static StationMarkerResponse toMarkerResponse(Station station, StationStatusSnapshot snapshot) {
         List<String> connectorTypes = station.getConnectors().stream()
                 .map(StationConnector::getConnectorType)
                 .filter(t -> t != null && !t.equals("Unknown"))
@@ -51,10 +47,6 @@ public final class StationMapper {
                 .max()
                 .orElse(0.0);
 
-        CommunityOverrideResponse overrideResponse = activeOverride != null
-                ? toCommunityOverrideResponse(activeOverride)
-                : null;
-
         return new StationMarkerResponse(
                 station.getId(),
                 station.getName(),
@@ -62,39 +54,14 @@ public final class StationMapper {
                 station.getLongitude(),
                 station.getCity(),
                 station.getOperatorName(),
-                resolveMarkerStatus(snapshot, activeOverride),
+                resolveMarkerStatus(snapshot),
                 station.getOpeningHours(),
                 connectorTypes,
-                maxPower > 0 ? maxPower : null,
-                overrideResponse
+                maxPower > 0 ? maxPower : null
         );
     }
 
-    private static CommunityOverrideResponse toCommunityOverrideResponse(CommunityStatusOverride o) {
-        return new CommunityOverrideResponse(
-                o.getId(),
-                o.getStation().getId(),
-                o.getStation().getName(),
-                o.getStation().getCity(),
-                o.getReportedStatus(),
-                o.getState(),
-                o.getWorkingCount(),
-                o.getNotWorkingCount(),
-                o.getCreatedAt(),
-                o.getExpiresAt()
-        );
-    }
-
-    private static String resolveMarkerStatus(StationStatusSnapshot s, CommunityStatusOverride override) {
-        if (override != null) {
-            boolean confirmed = override.getState() == OverrideState.CONFIRMED;
-            boolean pending   = override.getState() == OverrideState.PENDING;
-            if (confirmed && override.getReportedStatus() == ReportedStatus.NOT_WORKING) return "DISABLED";
-            if (confirmed && override.getReportedStatus() == ReportedStatus.WORKING)     return "WORKING";
-            if (pending   && override.getReportedStatus() == ReportedStatus.NOT_WORKING) return "DISABLED_UNCONFIRMED";
-            if (pending   && override.getReportedStatus() == ReportedStatus.WORKING)     return "WORKING_UNCONFIRMED";
-        }
-
+    private static String resolveMarkerStatus(StationStatusSnapshot s) {
         if (s == null) return "DEFAULT";
         int available    = s.getAvailableCount()    != null ? s.getAvailableCount()    : 0;
         int occupied     = s.getOccupiedCount()     != null ? s.getOccupiedCount()     : 0;

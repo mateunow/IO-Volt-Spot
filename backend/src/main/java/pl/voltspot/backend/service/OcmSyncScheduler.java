@@ -20,7 +20,7 @@ public class OcmSyncScheduler {
     private final StationService stationService;
     private final StationReportService stationReportService;
 
-    @Scheduled(cron = "0 */30 * * * *")
+    @Scheduled(cron = "0 0 */12 * * *")
     public void syncPoland() {
         log.info("Starting scheduled OCM sync for Poland...");
         try {

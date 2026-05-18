@@ -1,7 +1,5 @@
 package pl.voltspot.backend.dto.station;
 
-import pl.voltspot.backend.dto.report.CommunityOverrideResponse;
-
 import java.util.List;
 
 public record StationMarkerResponse(
@@ -14,7 +12,6 @@ public record StationMarkerResponse(
         String markerStatus,
         String openingHours,
         List<String> connectorTypes,
-        Double maxPowerKw,
-        CommunityOverrideResponse communityOverride
+        Double maxPowerKw
 ) {
 }
