@@ -83,18 +83,15 @@ public class StationReportService {
             }
         }
 
-        ReportedStatus majority = computeMajority(override, reportedStatus);
-        override.setReportedStatus(majority);
+        override.setReportedStatus(reportedStatus);
 
-        int majorityCount = majority == ReportedStatus.WORKING
-                ? override.getWorkingCount()
-                : override.getNotWorkingCount();
+        int totalVotes = override.getWorkingCount() + override.getNotWorkingCount();
 
-        if (majorityCount >= AUTO_CONFIRM_THRESHOLD && override.getState() == OverrideState.PENDING) {
+        if (totalVotes >= AUTO_CONFIRM_THRESHOLD && override.getState() == OverrideState.PENDING) {
             override.setState(OverrideState.CONFIRMED);
             override.setExpiresAt(Instant.now().plus(CONFIRMED_DURATION_HOURS, ChronoUnit.HOURS));
-            log.info("Override auto-confirmed for station {} (majority: {}, count: {})",
-                    stationId, majority, majorityCount);
+            log.info("Override auto-confirmed for station {} (status: {}, totalVotes: {})",
+                    stationId, reportedStatus, totalVotes);
         }
 
         CommunityStatusOverride saved = overrideRepository.save(override);
@@ -172,12 +169,6 @@ public class StationReportService {
             throw new BadRequestException("Override jest już nieaktywny.");
         }
         return override;
-    }
-
-    private static ReportedStatus computeMajority(CommunityStatusOverride override, ReportedStatus latestReported) {
-        if (override.getWorkingCount() > override.getNotWorkingCount()) return ReportedStatus.WORKING;
-        if (override.getNotWorkingCount() > override.getWorkingCount()) return ReportedStatus.NOT_WORKING;
-        return latestReported;
     }
 
     public CommunityOverrideResponse toResponse(CommunityStatusOverride o) {
