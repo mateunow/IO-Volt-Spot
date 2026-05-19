@@ -1,13 +1,11 @@
 package pl.voltspot.backend;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
+import pl.voltspot.backend.integration.AbstractIntegrationTest;
 
-@SpringBootTest
-class BackendApplicationTests {
+class BackendApplicationTests extends AbstractIntegrationTest {
 
     @Test
     void contextLoads() {
     }
-
 }
