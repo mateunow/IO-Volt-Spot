@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import ConnectorEditor from "./ConnectorEditor.jsx";
 import { IconClose, IconHeart, IconPin, IconPlug } from "./Icons.jsx";
 
 const OPERATIONAL_STATUS_OPTIONS = [
@@ -60,6 +61,8 @@ function DetailPanel({
     onStationEditChange,
     onSubmitReport,
     onSubmitConnectorReport,
+    canManageStation = false,
+    isStationAdmin = false,
 }) {
     const [feedbackStatus, setFeedbackStatus] = useState("WORKING");
     const [feedbackComment, setFeedbackComment] = useState("");
@@ -219,10 +222,12 @@ function DetailPanel({
             </div>
 
             <div className="detail-body">
-                {currentUser?.role === "ADMIN" && (
+                {canManageStation && (
                     <div className="section admin-section">
                         <div className="section-title">
-                            Administracja stacją
+                            {isStationAdmin
+                                ? "Administracja stacją"
+                                : "Zarządzanie stacją"}
                         </div>
                         {!stationEditMode && (
                             <div className="station-admin-actions">
@@ -238,7 +243,7 @@ function DetailPanel({
                                     className="action danger"
                                     onClick={onDeleteStation}
                                 >
-                                    Usuń stację (admin)
+                                    Usuń stację
                                 </button>
                             </div>
                         )}
@@ -384,6 +389,15 @@ function DetailPanel({
                                         ))}
                                     </div>
                                 </div>
+                                <ConnectorEditor
+                                    connectors={stationEditForm.connectors ?? []}
+                                    onChange={(connectors) =>
+                                        onStationEditChange(
+                                            "connectors",
+                                            connectors,
+                                        )
+                                    }
+                                />
                                 <div className="station-edit-actions">
                                     <button
                                         type="button"

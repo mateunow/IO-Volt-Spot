@@ -42,4 +42,12 @@ public class UserService {
 
         return StationMapper.toUserResponse(user);
     }
+
+    public void updateRole(pl.voltspot.backend.dto.user.UpdateUserRoleRequest request) {
+        User user = userRepository.findByEmail(request.email())
+                .orElseThrow(() -> new NotFoundException("Nie znaleziono użytkownika z emailem " + request.email()));
+
+        user.setRole(request.role());
+        userRepository.save(user);
+    }
 }

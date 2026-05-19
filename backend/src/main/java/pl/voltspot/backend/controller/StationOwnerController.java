@@ -9,10 +9,15 @@ import pl.voltspot.backend.dto.station.StationOwnerResponse;
 import pl.voltspot.backend.service.StationOwnerService;
 
 import java.util.List;
+import pl.voltspot.backend.auth.RequireAuth;
+import pl.voltspot.backend.auth.RequireRole;
+import pl.voltspot.backend.enums.UserRole;
 
 @RestController
 @RequestMapping("/api/stations/{stationId}/owners")
 @RequiredArgsConstructor
+@RequireAuth
+@RequireRole(UserRole.ADMIN)
 public class StationOwnerController {
 
     private final StationOwnerService stationOwnerService;

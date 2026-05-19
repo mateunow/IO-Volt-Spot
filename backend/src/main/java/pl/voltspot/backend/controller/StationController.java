@@ -5,7 +5,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import pl.voltspot.backend.auth.AuthContext;
+import pl.voltspot.backend.auth.CurrentUser;
 import pl.voltspot.backend.auth.RequireRole;
+import pl.voltspot.backend.dto.station.CreateStationRequest;
 import pl.voltspot.backend.dto.station.StationDetailsResponse;
 import pl.voltspot.backend.dto.station.StationMarkerResponse;
 import pl.voltspot.backend.dto.station.StationStatusSnapshotResponse;
@@ -55,21 +58,35 @@ public class StationController {
         return stationService.getLatestStatus(stationId);
     }
 
+    @PostMapping
+    @RequireRole({UserRole.OWNER, UserRole.ADMIN})
+    @ResponseStatus(HttpStatus.CREATED)
+    public StationDetailsResponse createStation(@Valid @RequestBody CreateStationRequest request) {
+        CurrentUser currentUser = AuthContext.get();
+        StationDetailsResponse created = stationService.createStation(request, currentUser.id());
+        stationCacheService.refresh();
+        return created;
+    }
+
     @PutMapping("/{stationId}")
-    @RequireRole({UserRole.ADMIN})
+    @RequireRole({UserRole.OWNER, UserRole.ADMIN})
     public StationDetailsResponse updateStation(
             @PathVariable Long stationId,
             @Valid @RequestBody UpdateStationRequest request
     ) {
+        CurrentUser currentUser = AuthContext.get();
+        stationService.requireWriteAccess(stationId, currentUser.id(), currentUser.role());
         StationDetailsResponse result = stationService.updateStation(stationId, request);
         stationCacheService.refresh();
         return result;
     }
 
     @DeleteMapping("/{stationId}")
-    @RequireRole({UserRole.ADMIN})
+    @RequireRole({UserRole.OWNER, UserRole.ADMIN})
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteStation(@PathVariable Long stationId) {
+        CurrentUser currentUser = AuthContext.get();
+        stationService.requireWriteAccess(stationId, currentUser.id(), currentUser.role());
         stationService.deleteStationById(stationId);
         stationCacheService.refresh();
     }
