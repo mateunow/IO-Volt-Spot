@@ -30,7 +30,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -128,8 +127,7 @@ class StationServiceTest {
     }
 
     @Test
-    void getStations_withBbox_callsOcmAndReturnsDbResults() {
-        when(ocmClient.fetchStations(any(), any(), any(), any())).thenReturn(List.of());
+    void getStations_withBbox_returnsDbResults_withoutCallingOcm() {
         when(stationRepository.findByActiveTrueAndLatitudeBetweenAndLongitudeBetweenOrderByIdAsc(
                 49.9, 50.1, 19.9, 20.1)).thenReturn(List.of(station));
         when(snapshotRepository.findLatestForStations(anyList())).thenReturn(List.of(snapshot));
@@ -137,22 +135,9 @@ class StationServiceTest {
         List<StationMarkerResponse> result = service.getStations(49.9, 50.1, 19.9, 20.1);
 
         assertThat(result).hasSize(1);
-        verify(ocmClient, times(1)).fetchStations(49.9, 19.9, 50.1, 20.1);
         verify(stationRepository).findByActiveTrueAndLatitudeBetweenAndLongitudeBetweenOrderByIdAsc(
                 49.9, 50.1, 19.9, 20.1);
-    }
-
-    @Test
-    void getStations_withBbox_swallowsOcmFailureAndStillReturnsCache() {
-        when(ocmClient.fetchStations(any(), any(), any(), any()))
-                .thenThrow(new RuntimeException("ocm offline"));
-        when(stationRepository.findByActiveTrueAndLatitudeBetweenAndLongitudeBetweenOrderByIdAsc(
-                49.9, 50.1, 19.9, 20.1)).thenReturn(List.of(station));
-        when(snapshotRepository.findLatestForStations(anyList())).thenReturn(List.of(snapshot));
-
-        List<StationMarkerResponse> result = service.getStations(49.9, 50.1, 19.9, 20.1);
-
-        assertThat(result).hasSize(1);
+        verify(ocmClient, never()).fetchStations(any(), any(), any(), any());
     }
 
     @Test
