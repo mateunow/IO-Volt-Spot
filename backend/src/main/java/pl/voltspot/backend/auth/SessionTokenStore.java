@@ -43,6 +43,21 @@ public class SessionTokenStore {
         }
     }
 
+    public void updateUserRole(Long userId, pl.voltspot.backend.enums.UserRole newRole) {
+        sessions.entrySet().forEach(entry -> {
+            TokenSession session = entry.getValue();
+            if (session.user().id().equals(userId)) {
+                CurrentUser updatedUser = new CurrentUser(
+                        userId,
+                        session.user().email(),
+                        session.user().displayName(),
+                        newRole
+                );
+                sessions.put(entry.getKey(), new TokenSession(updatedUser, session.expiresAt()));
+            }
+        });
+    }
+
     private record TokenSession(CurrentUser user, Instant expiresAt) {
     }
 }
