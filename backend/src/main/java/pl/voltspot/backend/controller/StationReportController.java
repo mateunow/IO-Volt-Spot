@@ -42,6 +42,16 @@ public class StationReportController {
         return reportService.getPendingOverrides();
     }
 
+    @PostMapping("/api/admin/stations/{stationId}/set-status")
+    @RequireRole({UserRole.ADMIN})
+    public CommunityOverrideResponse setStationStatus(
+            @PathVariable Long stationId,
+            @Valid @RequestBody StationReportRequest request
+    ) {
+        Long adminId = AuthContext.get().id();
+        return reportService.setStationStatusAsAdmin(stationId, adminId, request.reportedStatus());
+    }
+
     @PostMapping("/api/admin/overrides/{overrideId}/confirm")
     @RequireRole({UserRole.ADMIN})
     public CommunityOverrideResponse confirmOverride(@PathVariable Long overrideId) {

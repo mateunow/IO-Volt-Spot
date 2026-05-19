@@ -38,6 +38,15 @@ public class CommunityStatusOverride {
     @Column(name = "not_working_count", nullable = false)
     private int notWorkingCount = 0;
 
+    @Column(name = "consecutive_count", nullable = false)
+    private int consecutiveCount = 0;
+
+    @Column(name = "challenge_count", nullable = false)
+    private int challengeCount = 0;
+
+    @Column(name = "confirmed_at")
+    private Instant confirmedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

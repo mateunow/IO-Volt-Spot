@@ -66,14 +66,9 @@ function DetailPanel({
     const handleSubmit = () => {
         onSubmitFeedback(feedbackStatus, feedbackComment);
         setFeedbackComment("");
-        if (onSubmitReport && (feedbackStatus === "WORKING" || feedbackStatus === "NOT_WORKING")) {
-            const currentMarkerStatus = station?.markerStatus;
-            const currentIsWorking = markerStatusIsWorking(currentMarkerStatus);
-            const statusDiffers =
-                !currentMarkerStatus ||
-                (feedbackStatus === "NOT_WORKING" && currentIsWorking) ||
-                (feedbackStatus === "WORKING" && !currentIsWorking);
-            if (statusDiffers) onSubmitReport(feedbackStatus);
+        if (onSubmitReport && (feedbackStatus === "WORKING" || feedbackStatus === "NOT_WORKING" || feedbackStatus === "BUSY")) {
+            const reportStatus = feedbackStatus === "BUSY" ? "OCCUPIED" : feedbackStatus;
+            onSubmitReport(reportStatus);
         }
     };
 
@@ -306,19 +301,25 @@ function DetailPanel({
                                             }
                                         />
                                     </label>
-                                    <label className="station-edit-checkbox">
-                                        <input
-                                            type="checkbox"
-                                            checked={stationEditForm.active}
-                                            onChange={(e) =>
-                                                onStationEditChange(
-                                                    "active",
-                                                    e.target.checked,
-                                                )
-                                            }
-                                        />
-                                        Stacja aktywna
-                                    </label>
+                                    <div className="station-edit-status-label">Status stacji</div>
+                                    <div className="station-edit-status-group">
+                                        {[
+                                            { value: "WORKING", label: "Działa" },
+                                            { value: "OCCUPIED", label: "Zajęta" },
+                                            { value: "NOT_WORKING", label: "Nie działa" },
+                                        ].map(({ value, label }) => (
+                                            <label key={value} className="station-edit-radio">
+                                                <input
+                                                    type="radio"
+                                                    name="adminStatus"
+                                                    value={value}
+                                                    checked={stationEditForm.adminStatus === value}
+                                                    onChange={() => onStationEditChange("adminStatus", value)}
+                                                />
+                                                {label}
+                                            </label>
+                                        ))}
+                                    </div>
                                 </div>
                                 <div className="station-edit-actions">
                                     <button

@@ -836,6 +836,43 @@ button { font-family: inherit; cursor: pointer; }
     height: 16px;
     margin: 0;
 }
+.station-edit-status-label {
+    grid-column: 1 / -1;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+.station-edit-status-group {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 8px;
+}
+.station-edit-radio {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.02);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--ink);
+    font-weight: 500;
+    transition: border-color .15s, background .15s;
+}
+.station-edit-radio:has(input:checked) {
+    border-color: var(--accent);
+    background: rgba(134,239,172,0.07);
+}
+.station-edit-radio input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--accent);
+}
 .station-edit-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1205,6 +1242,10 @@ button { font-family: inherit; cursor: pointer; }
 .admin-report-badge.bad {
     background: rgba(239, 68, 68, 0.15);
     color: #F87171;
+}
+.admin-report-badge.busy {
+    background: rgba(234, 179, 8, 0.15);
+    color: #FCD34D;
 }
 .admin-report-counts {
     font-size: 11px;
