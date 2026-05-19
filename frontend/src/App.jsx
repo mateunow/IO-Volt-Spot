@@ -291,9 +291,11 @@ function App() {
         setStationEditMode(false);
     }, [stationDetails]);
 
+    const detailOpen = !!selectedStationId;
+
     useEffect(() => {
         window.dispatchEvent(new Event("voltspot:resize-map"));
-    }, [selectedStationId]);
+    }, [detailOpen]);
 
     const distanceKm = useMemo(() => {
         if (!location || !stationDetails) return null;
@@ -415,7 +417,7 @@ function App() {
         }
     };
 
-    const handleStationClick = (id) => setSelectedStationId(id);
+    const handleStationClick = useCallback((id) => setSelectedStationId(id), []);
     const handleFavoriteClick = (favorite) =>
         setSelectedStationId(favorite.stationId);
     const handleClosePanel = () => setSelectedStationId(null);
@@ -789,7 +791,6 @@ function App() {
 
     const [sidebarOpen, setSidebarOpen] = useState(true);
 
-    const detailOpen = !!selectedStationId;
     const selectedStation = effectiveStations.find((s) => s.id === selectedStationId);
 
     return (

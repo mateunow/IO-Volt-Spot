@@ -100,7 +100,7 @@ const StationMarker = memo(function StationMarker({ station, isSelected, onStati
     );
 });
 
-function MapView({ location, stations = [], selectedStationId, selectedStation, onStationClick, onViewportChange }) {
+const MapView = memo(function MapView({ location, stations = [], selectedStationId, selectedStation, onStationClick, onViewportChange }) {
     return (
         <MapContainer
             center={[52.1128, 19.21195]}
@@ -132,6 +132,6 @@ function MapView({ location, stations = [], selectedStationId, selectedStation, 
             ))}
         </MapContainer>
     );
-}
+});
 
 export default MapView;
