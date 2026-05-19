@@ -30,8 +30,11 @@ public class StationReportService {
 
     private static final Logger log = LoggerFactory.getLogger(StationReportService.class);
     private static final int AUTO_CONFIRM_THRESHOLD = 3;
-    private static final long CONFIRMED_DURATION_HOURS = 24;
+    private static final int GRACE_CHALLENGE_THRESHOLD = 2;
+    private static final long CONFIRMED_DURATION_HOURS = 12;
+    private static final long CONFIRMED_GRACE_HOURS = 1;
     private static final long PENDING_STALE_HOURS = 8;
+    private static final long OCCUPIED_DURATION_HOURS = 1;
 
     private final StationRepository stationRepository;
     private final UserRepository userRepository;
@@ -83,15 +86,47 @@ public class StationReportService {
             }
         }
 
-        override.setReportedStatus(reportedStatus);
+        ReportedStatus previousStatus = override.getReportedStatus();
 
-        int totalVotes = override.getWorkingCount() + override.getNotWorkingCount();
+        if (override.getState() == OverrideState.CONFIRMED) {
+            if (reportedStatus == previousStatus) {
+                override.setChallengeCount(0);
+            } else {
+                boolean inGracePeriod = override.getConfirmedAt() != null &&
+                    Instant.now().isBefore(override.getConfirmedAt().plus(CONFIRMED_GRACE_HOURS, ChronoUnit.HOURS));
+                override.setChallengeCount(override.getChallengeCount() + 1);
 
-        if (totalVotes >= AUTO_CONFIRM_THRESHOLD && override.getState() == OverrideState.PENDING) {
-            override.setState(OverrideState.CONFIRMED);
-            override.setExpiresAt(Instant.now().plus(CONFIRMED_DURATION_HOURS, ChronoUnit.HOURS));
-            log.info("Override auto-confirmed for station {} (status: {}, totalVotes: {})",
-                    stationId, reportedStatus, totalVotes);
+                int challengeCount = override.getChallengeCount();
+                if (!inGracePeriod || challengeCount >= GRACE_CHALLENGE_THRESHOLD) {
+                    override.setState(OverrideState.PENDING);
+                    override.setReportedStatus(reportedStatus);
+                    override.setConsecutiveCount(1);
+                    override.setChallengeCount(0);
+                    override.setExpiresAt(null);
+                    log.info("Override reverted to PENDING for station {} (inGrace: {}, challenges: {})",
+                            stationId, inGracePeriod, challengeCount);
+                }
+            }
+        } else {
+            override.setReportedStatus(reportedStatus);
+            if (reportedStatus == previousStatus) {
+                override.setConsecutiveCount(override.getConsecutiveCount() + 1);
+            } else {
+                override.setConsecutiveCount(1);
+            }
+
+            if (override.getConsecutiveCount() >= AUTO_CONFIRM_THRESHOLD) {
+                override.setState(OverrideState.CONFIRMED);
+                override.setConfirmedAt(Instant.now());
+                override.setChallengeCount(0);
+                override.setExpiresAt(Instant.now().plus(CONFIRMED_DURATION_HOURS, ChronoUnit.HOURS));
+                log.info("Override auto-confirmed for station {} (status: {}, consecutive: {})",
+                        stationId, reportedStatus, override.getConsecutiveCount());
+            }
+        }
+
+        if (override.getReportedStatus() == ReportedStatus.OCCUPIED) {
+            override.setExpiresAt(Instant.now().plus(OCCUPIED_DURATION_HOURS, ChronoUnit.HOURS));
         }
 
         CommunityStatusOverride saved = overrideRepository.save(override);
@@ -119,8 +154,36 @@ public class StationReportService {
     public List<CommunityOverrideResponse> getPendingOverrides() {
         return overrideRepository.findByStateOrderByCreatedAtDesc(OverrideState.PENDING)
                 .stream()
+                .filter(o -> o.getReportedStatus() != ReportedStatus.OCCUPIED)
                 .map(this::toResponse)
                 .toList();
+    }
+
+    @Transactional
+    public CommunityOverrideResponse setStationStatusAsAdmin(Long stationId, Long adminId, ReportedStatus reportedStatus) {
+        Station station = stationRepository.findById(stationId)
+                .orElseThrow(() -> new NotFoundException("Stacja nie istnieje: " + stationId));
+        User admin = userRepository.findById(adminId)
+                .orElseThrow(() -> new NotFoundException("Admin nie istnieje: " + adminId));
+
+        overrideRepository.findByStationIdAndStateIn(stationId, List.of(OverrideState.PENDING, OverrideState.CONFIRMED))
+                .ifPresent(o -> {
+                    o.setState(OverrideState.EXPIRED);
+                    overrideRepository.save(o);
+                });
+
+        CommunityStatusOverride override = new CommunityStatusOverride();
+        override.setStation(station);
+        override.setReportedStatus(reportedStatus);
+        override.setState(OverrideState.CONFIRMED);
+        override.setConfirmedAt(Instant.now());
+        override.setConfirmedByAdmin(admin);
+        override.setConsecutiveCount(1);
+        override.setExpiresAt(reportedStatus == ReportedStatus.OCCUPIED
+                ? Instant.now().plus(OCCUPIED_DURATION_HOURS, ChronoUnit.HOURS)
+                : Instant.now().plus(CONFIRMED_DURATION_HOURS, ChronoUnit.HOURS));
+
+        return toResponse(overrideRepository.save(override));
     }
 
     @Transactional
@@ -130,6 +193,8 @@ public class StationReportService {
                 .orElseThrow(() -> new NotFoundException("Admin nie istnieje: " + adminId));
 
         override.setState(OverrideState.CONFIRMED);
+        override.setConfirmedAt(Instant.now());
+        override.setChallengeCount(0);
         override.setExpiresAt(Instant.now().plus(CONFIRMED_DURATION_HOURS, ChronoUnit.HOURS));
         override.setConfirmedByAdmin(admin);
 
@@ -147,18 +212,18 @@ public class StationReportService {
     public void expireOverrides() {
         Instant now = Instant.now();
 
-        List<CommunityStatusOverride> expiredConfirmed = overrideRepository.findExpiredConfirmed(now);
-        expiredConfirmed.forEach(o -> o.setState(OverrideState.EXPIRED));
-        overrideRepository.saveAll(expiredConfirmed);
+        List<CommunityStatusOverride> expiredByExpiresAt = overrideRepository.findExpiredByExpiresAt(now);
+        expiredByExpiresAt.forEach(o -> o.setState(OverrideState.EXPIRED));
+        overrideRepository.saveAll(expiredByExpiresAt);
 
         Instant staleCutoff = now.minus(PENDING_STALE_HOURS, ChronoUnit.HOURS);
         List<CommunityStatusOverride> stalePending = overrideRepository.findStalePending(staleCutoff);
         stalePending.forEach(o -> o.setState(OverrideState.EXPIRED));
         overrideRepository.saveAll(stalePending);
 
-        if (!expiredConfirmed.isEmpty() || !stalePending.isEmpty()) {
-            log.info("Expired overrides: {} confirmed, {} stale pending",
-                    expiredConfirmed.size(), stalePending.size());
+        if (!expiredByExpiresAt.isEmpty() || !stalePending.isEmpty()) {
+            log.info("Expired overrides: {} by expiresAt, {} stale pending",
+                    expiredByExpiresAt.size(), stalePending.size());
         }
     }
 

@@ -17,8 +17,8 @@ public interface CommunityStatusOverrideRepository extends JpaRepository<Communi
 
     List<CommunityStatusOverride> findByStateOrderByCreatedAtDesc(OverrideState state);
 
-    @Query("SELECT o FROM CommunityStatusOverride o WHERE o.state = 'CONFIRMED' AND o.expiresAt < :now")
-    List<CommunityStatusOverride> findExpiredConfirmed(Instant now);
+    @Query("SELECT o FROM CommunityStatusOverride o WHERE o.state IN ('PENDING', 'CONFIRMED') AND o.expiresAt IS NOT NULL AND o.expiresAt < :now")
+    List<CommunityStatusOverride> findExpiredByExpiresAt(Instant now);
 
     @Query("SELECT o FROM CommunityStatusOverride o WHERE o.state = 'PENDING' AND o.createdAt < :cutoff")
     List<CommunityStatusOverride> findStalePending(Instant cutoff);

@@ -485,8 +485,8 @@ function Sidebar({
                                         )}
                                     </div>
                                     <div className="admin-report-meta">
-                                        <span className={`admin-report-badge ${o.reportedStatus === "NOT_WORKING" ? "bad" : "good"}`}>
-                                            {o.reportedStatus === "NOT_WORKING" ? "Nie działa" : "Działa"}
+                                        <span className={`admin-report-badge ${o.reportedStatus === "NOT_WORKING" ? "bad" : o.reportedStatus === "OCCUPIED" ? "busy" : "good"}`}>
+                                            {o.reportedStatus === "NOT_WORKING" ? "Nie działa" : o.reportedStatus === "OCCUPIED" ? "Zajęta" : "Działa"}
                                         </span>
                                         <span className="admin-report-counts">
                                             ✓ {o.workingCount} · ✗ {o.notWorkingCount}

@@ -39,6 +39,7 @@ function readStoredUser() {
 
 function resolveMarkerStatusFromOverride(override) {
     if (!override) return null;
+    if (override.reportedStatus === "OCCUPIED") return "OCCUPIED";
     if (override.state === "CONFIRMED") return override.reportedStatus === "NOT_WORKING" ? "DISABLED" : "WORKING";
     if (override.state === "PENDING")   return override.reportedStatus === "NOT_WORKING" ? "DISABLED_UNCONFIRMED" : "WORKING_UNCONFIRMED";
     return null;
@@ -282,6 +283,12 @@ function App() {
             return;
         }
 
+        const currentOverride = activeOverrides.find(o => o.stationId === stationDetails.id);
+        const defaultAdminStatus =
+            currentOverride?.reportedStatus === "OCCUPIED" ? "OCCUPIED" :
+            currentOverride?.reportedStatus === "NOT_WORKING" ? "NOT_WORKING" :
+            stationDetails.active ? "WORKING" : "NOT_WORKING";
+
         setStationEditForm({
             name: stationDetails.name ?? "",
             latitude: stationDetails.latitude ?? "",
@@ -292,8 +299,7 @@ function App() {
             operatorName: stationDetails.operatorName ?? "",
             openingHours: stationDetails.openingHours ?? "",
             accessType: stationDetails.accessType ?? "",
-            active: Boolean(stationDetails.active),
-            adminStatus: null,
+            adminStatus: defaultAdminStatus,
         });
         setStationEditMode(false);
     }, [stationDetails]);
@@ -664,7 +670,7 @@ function App() {
                 operatorName: stationDetails.operatorName ?? "",
                 openingHours: stationDetails.openingHours ?? "",
                 accessType: stationDetails.accessType ?? "",
-                active: Boolean(stationDetails.active),
+                adminStatus: stationDetails.active ? "WORKING" : "NOT_WORKING",
             });
         }
     };
@@ -708,7 +714,7 @@ function App() {
                 operatorName: str(stationEditForm.operatorName) || null,
                 openingHours: str(stationEditForm.openingHours) || null,
                 accessType: str(stationEditForm.accessType) || null,
-                active: Boolean(stationEditForm.active),
+                active: stationEditForm.adminStatus !== "NOT_WORKING",
             };
 
             const resp = await fetch(
@@ -746,26 +752,17 @@ function App() {
                 ),
             );
 
-            const reportedStatus = stationEditForm.active ? "WORKING" : "NOT_WORKING";
-            const reportResp = await fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/report`, {
+            const statusResp = await fetch(`${API_BASE_URL}/api/admin/stations/${selectedStationId}/set-status`, {
                 method: "POST",
                 headers: buildAuthHeaders(authToken, { "Content-Type": "application/json" }),
-                body: JSON.stringify({ reportedStatus }),
+                body: JSON.stringify({ reportedStatus: stationEditForm.adminStatus }),
             });
-            if (reportResp.ok) {
-                const override = await reportResp.json();
-                const confirmResp = await fetch(`${API_BASE_URL}/api/admin/overrides/${override.id}/confirm`, {
-                    method: "POST",
-                    headers: buildAuthHeaders(authToken),
-                });
-                if (confirmResp.ok) {
-                    const confirmed = await confirmResp.json();
-                    setActiveOverrides(prev => [
-                        ...prev.filter(o => o.stationId !== selectedStationId),
-                        confirmed,
-                    ]);
-                    setAdminOverrides(prev => prev.filter(o => o.id !== override.id));
-                }
+            if (statusResp.ok) {
+                const confirmed = await statusResp.json();
+                setActiveOverrides(prev => [
+                    ...prev.filter(o => o.stationId !== selectedStationId),
+                    confirmed,
+                ]);
             }
 
             setStationEditMode(false);
