@@ -8,17 +8,25 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import pl.voltspot.backend.client.OCMClient;
+import pl.voltspot.backend.dto.station.ConnectorRequest;
+import pl.voltspot.backend.dto.station.CreateStationRequest;
 import pl.voltspot.backend.dto.station.StationDetailsResponse;
 import pl.voltspot.backend.dto.station.StationMarkerResponse;
 import pl.voltspot.backend.dto.station.StationStatusSnapshotResponse;
 import pl.voltspot.backend.dto.station.UpdateStationRequest;
 import pl.voltspot.backend.entity.Station;
 import pl.voltspot.backend.entity.StationConnector;
+import pl.voltspot.backend.entity.StationOwner;
 import pl.voltspot.backend.entity.StationStatusSnapshot;
+import pl.voltspot.backend.entity.User;
+import pl.voltspot.backend.enums.UserRole;
 import pl.voltspot.backend.exceptions.BadRequestException;
+import pl.voltspot.backend.exceptions.ForbiddenException;
 import pl.voltspot.backend.exceptions.NotFoundException;
+import pl.voltspot.backend.repository.StationOwnerRepository;
 import pl.voltspot.backend.repository.StationRepository;
 import pl.voltspot.backend.repository.StationStatusSnapshotRepository;
+import pl.voltspot.backend.repository.UserRepository;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -42,6 +50,12 @@ class StationServiceTest {
 
     @Mock
     private StationStatusSnapshotRepository snapshotRepository;
+
+    @Mock
+    private StationOwnerRepository stationOwnerRepository;
+
+    @Mock
+    private UserRepository userRepository;
 
     @Mock
     private OCMClient ocmClient;
@@ -206,9 +220,213 @@ class StationServiceTest {
     }
 
     @Test
+    void createStation_throwsNotFound_whenCreatorMissing() {
+        CreateStationRequest request = new CreateStationRequest(
+                "Nowa", 52.0, 21.0, null, null, null, null, null, null, null);
+        when(userRepository.findById(42L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createStation(request, 42L))
+                .isInstanceOf(NotFoundException.class);
+
+        verify(stationRepository, never()).save(any());
+        verify(stationOwnerRepository, never()).save(any());
+    }
+
+    @Test
+    void createStation_throwsForbidden_whenCreatorHasUserRole() {
+        User regular = new User();
+        regular.setId(5L);
+        regular.setRole(UserRole.USER);
+        CreateStationRequest request = new CreateStationRequest(
+                "Nowa", 52.0, 21.0, null, null, null, null, null, null, null);
+        when(userRepository.findById(5L)).thenReturn(Optional.of(regular));
+
+        assertThatThrownBy(() -> service.createStation(request, 5L))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("OWNER");
+
+        verify(stationRepository, never()).save(any());
+        verify(stationOwnerRepository, never()).save(any());
+    }
+
+    @Test
+    void createStation_persistsStationSnapshotAndAssignsOwner() {
+        User owner = new User();
+        owner.setId(7L);
+        owner.setRole(UserRole.OWNER);
+
+        CreateStationRequest request = new CreateStationRequest(
+                "  Stacja Nowa  ",
+                52.1,
+                21.1,
+                "  ul. Testowa 1 ",
+                " Warszawa ",
+                "PL",
+                "Operator",
+                "24/7",
+                "public",
+                null
+        );
+
+        when(userRepository.findById(7L)).thenReturn(Optional.of(owner));
+        when(stationRepository.save(any(Station.class))).thenAnswer(inv -> simulatePersist(inv.getArgument(0), 123L));
+        when(snapshotRepository.save(any(StationStatusSnapshot.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(stationOwnerRepository.save(any(StationOwner.class))).thenAnswer(inv -> {
+            StationOwner so = inv.getArgument(0);
+            if (so.getAssignedAt() == null) so.setAssignedAt(Instant.now());
+            return so;
+        });
+
+        StationDetailsResponse response = service.createStation(request, 7L);
+
+        ArgumentCaptor<Station> stationCaptor = ArgumentCaptor.forClass(Station.class);
+        verify(stationRepository).save(stationCaptor.capture());
+        Station savedStation = stationCaptor.getValue();
+        assertThat(savedStation.getName()).isEqualTo("Stacja Nowa");
+        assertThat(savedStation.getLatitude()).isEqualTo(52.1);
+        assertThat(savedStation.getLongitude()).isEqualTo(21.1);
+        assertThat(savedStation.getAddressLine()).isEqualTo("ul. Testowa 1");
+        assertThat(savedStation.getCity()).isEqualTo("Warszawa");
+        assertThat(savedStation.getCountry()).isEqualTo("PL");
+        assertThat(savedStation.getExternalSource()).isEqualTo("MANUAL");
+        assertThat(savedStation.getExternalId()).isNotBlank();
+        assertThat(savedStation.isActive()).isTrue();
+        assertThat(savedStation.getLastSyncedAt()).isNotNull();
+        assertThat(savedStation.getAdminActiveLockedUntil()).isNotNull();
+        assertThat(savedStation.getConnectors()).isEmpty();
+
+        ArgumentCaptor<StationStatusSnapshot> snapshotCaptor = ArgumentCaptor.forClass(StationStatusSnapshot.class);
+        verify(snapshotRepository).save(snapshotCaptor.capture());
+        StationStatusSnapshot savedSnapshot = snapshotCaptor.getValue();
+        assertThat(savedSnapshot.getStation()).isSameAs(savedStation);
+        assertThat(savedSnapshot.getAvailableCount()).isEqualTo(0);
+        assertThat(savedSnapshot.getSource()).isEqualTo("MANUAL");
+
+        ArgumentCaptor<StationOwner> ownerCaptor = ArgumentCaptor.forClass(StationOwner.class);
+        verify(stationOwnerRepository).save(ownerCaptor.capture());
+        StationOwner savedOwnership = ownerCaptor.getValue();
+        assertThat(savedOwnership.getStation()).isSameAs(savedStation);
+        assertThat(savedOwnership.getOwner()).isSameAs(owner);
+
+        assertThat(response.id()).isEqualTo(123L);
+        assertThat(response.name()).isEqualTo("Stacja Nowa");
+        assertThat(response.active()).isTrue();
+        assertThat(response.latestStatus()).isNotNull();
+        assertThat(response.latestStatus().availableCount()).isEqualTo(0);
+    }
+
+    @Test
+    void createStation_persistsConnectorsAndUsesQuantityAsAvailable() {
+        User owner = new User();
+        owner.setId(11L);
+        owner.setRole(UserRole.OWNER);
+
+        CreateStationRequest request = new CreateStationRequest(
+                "Stacja",
+                52.0,
+                21.0,
+                null, null, null, null, null, null,
+                List.of(
+                        new ConnectorRequest("CCS2", "DC", new BigDecimal("50.0"), 2),
+                        new ConnectorRequest("Type2", "AC", new BigDecimal("22.0"), 1)
+                )
+        );
+
+        when(userRepository.findById(11L)).thenReturn(Optional.of(owner));
+        when(stationRepository.save(any(Station.class))).thenAnswer(inv -> simulatePersist(inv.getArgument(0), 150L));
+        when(snapshotRepository.save(any(StationStatusSnapshot.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(stationOwnerRepository.save(any(StationOwner.class))).thenAnswer(inv -> {
+            StationOwner so = inv.getArgument(0);
+            if (so.getAssignedAt() == null) so.setAssignedAt(Instant.now());
+            return so;
+        });
+
+        StationDetailsResponse response = service.createStation(request, 11L);
+
+        ArgumentCaptor<Station> stationCaptor = ArgumentCaptor.forClass(Station.class);
+        verify(stationRepository).save(stationCaptor.capture());
+        Station savedStation = stationCaptor.getValue();
+        assertThat(savedStation.getConnectors()).hasSize(2);
+        assertThat(savedStation.getConnectors().get(0).getConnectorType()).isEqualTo("CCS2");
+        assertThat(savedStation.getConnectors().get(0).getQuantity()).isEqualTo(2);
+        assertThat(savedStation.getConnectors().get(0).getStation()).isSameAs(savedStation);
+
+        ArgumentCaptor<StationStatusSnapshot> snapshotCaptor = ArgumentCaptor.forClass(StationStatusSnapshot.class);
+        verify(snapshotRepository).save(snapshotCaptor.capture());
+        assertThat(snapshotCaptor.getValue().getAvailableCount()).isEqualTo(3);
+
+        assertThat(response.connectors()).hasSize(2);
+    }
+
+    private static Station simulatePersist(Station station, long stationId) {
+        if (station.getId() == null) station.setId(stationId);
+        long connectorIdCounter = 1000L;
+        for (StationConnector c : station.getConnectors()) {
+            if (c.getId() == null) c.setId(connectorIdCounter++);
+        }
+        for (StationOwner o : station.getOwners()) {
+            if (o.getAssignedAt() == null) o.setAssignedAt(Instant.now());
+        }
+        return station;
+    }
+
+    @Test
+    void createStation_allowsAdminToCreate() {
+        User admin = new User();
+        admin.setId(9L);
+        admin.setRole(UserRole.ADMIN);
+        CreateStationRequest request = new CreateStationRequest(
+                "Stacja", 52.0, 21.0, null, null, null, null, null, null, null);
+
+        when(userRepository.findById(9L)).thenReturn(Optional.of(admin));
+        when(stationRepository.save(any(Station.class))).thenAnswer(inv -> simulatePersist(inv.getArgument(0), 200L));
+        when(snapshotRepository.save(any(StationStatusSnapshot.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(stationOwnerRepository.save(any(StationOwner.class))).thenAnswer(inv -> {
+            StationOwner so = inv.getArgument(0);
+            if (so.getAssignedAt() == null) so.setAssignedAt(Instant.now());
+            return so;
+        });
+
+        StationDetailsResponse response = service.createStation(request, 9L);
+
+        assertThat(response.id()).isEqualTo(200L);
+        verify(stationOwnerRepository).save(any(StationOwner.class));
+    }
+
+    @Test
+    void requireWriteAccess_passesForAdmin() {
+        service.requireWriteAccess(1L, 99L, UserRole.ADMIN);
+        verifyNoInteractions(stationOwnerRepository);
+    }
+
+    @Test
+    void requireWriteAccess_passesForOwnerOfStation() {
+        when(stationOwnerRepository.existsByStationIdAndOwner_Id(1L, 7L)).thenReturn(true);
+
+        service.requireWriteAccess(1L, 7L, UserRole.OWNER);
+
+        verify(stationOwnerRepository).existsByStationIdAndOwner_Id(1L, 7L);
+    }
+
+    @Test
+    void requireWriteAccess_throwsForbiddenForOwnerOfOtherStation() {
+        when(stationOwnerRepository.existsByStationIdAndOwner_Id(2L, 7L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.requireWriteAccess(2L, 7L, UserRole.OWNER))
+                .isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    void requireWriteAccess_throwsForbiddenForRegularUser() {
+        assertThatThrownBy(() -> service.requireWriteAccess(1L, 7L, UserRole.USER))
+                .isInstanceOf(ForbiddenException.class);
+        verifyNoInteractions(stationOwnerRepository);
+    }
+
+    @Test
     void updateStation_throwsNotFound_whenStationMissing() {
         UpdateStationRequest request = new UpdateStationRequest(
-                "n", 1.0, 2.0, null, null, null, null, null, null, true);
+                "n", 1.0, 2.0, null, null, null, null, null, null, true, null);
         when(stationRepository.findById(1L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.updateStation(1L, request))
@@ -219,7 +437,7 @@ class StationServiceTest {
     void updateStation_persistsChangesAndReturnsDetails() {
         UpdateStationRequest request = new UpdateStationRequest(
                 "Nowa nazwa", 51.0, 21.0, "Ul. Główna 1", "Warszawa",
-                "PL", "Operator", "Mon-Fri", "private", false);
+                "PL", "Operator", "Mon-Fri", "private", false, null);
 
         when(stationRepository.findById(1L)).thenReturn(Optional.of(station));
         when(stationRepository.save(any(Station.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -242,9 +460,54 @@ class StationServiceTest {
         assertThat(saved.getAccessType()).isEqualTo("private");
         assertThat(saved.isActive()).isFalse();
         assertThat(saved.getLastSyncedAt()).isNotNull();
+        // Connectors nie ruszone, gdy w request nie podano listy
+        assertThat(saved.getConnectors()).hasSize(1);
 
         assertThat(response.name()).isEqualTo("Nowa nazwa");
         assertThat(response.active()).isFalse();
+    }
+
+    @Test
+    void updateStation_replacesConnectorsWhenProvided() {
+        UpdateStationRequest request = new UpdateStationRequest(
+                "n", 1.0, 2.0, null, null, null, null, null, null, true,
+                List.of(
+                        new ConnectorRequest("Type2", "AC", new BigDecimal("11.0"), 3),
+                        new ConnectorRequest("CHAdeMO", "DC", new BigDecimal("50.0"), 1)
+                )
+        );
+
+        when(stationRepository.findById(1L)).thenReturn(Optional.of(station));
+        when(stationRepository.save(any(Station.class))).thenAnswer(inv -> simulatePersist(inv.getArgument(0), 1L));
+        when(snapshotRepository.findTopByStationIdOrderByRecordedAtDesc(1L))
+                .thenReturn(Optional.of(snapshot));
+
+        service.updateStation(1L, request);
+
+        ArgumentCaptor<Station> captor = ArgumentCaptor.forClass(Station.class);
+        verify(stationRepository).save(captor.capture());
+        Station saved = captor.getValue();
+        assertThat(saved.getConnectors()).hasSize(2);
+        assertThat(saved.getConnectors().get(0).getConnectorType()).isEqualTo("Type2");
+        assertThat(saved.getConnectors().get(0).getQuantity()).isEqualTo(3);
+        assertThat(saved.getConnectors().get(1).getConnectorType()).isEqualTo("CHAdeMO");
+    }
+
+    @Test
+    void updateStation_replacesConnectorsWithEmptyListWhenProvided() {
+        UpdateStationRequest request = new UpdateStationRequest(
+                "n", 1.0, 2.0, null, null, null, null, null, null, true, List.of());
+
+        when(stationRepository.findById(1L)).thenReturn(Optional.of(station));
+        when(stationRepository.save(any(Station.class))).thenAnswer(inv -> simulatePersist(inv.getArgument(0), 1L));
+        when(snapshotRepository.findTopByStationIdOrderByRecordedAtDesc(1L))
+                .thenReturn(Optional.of(snapshot));
+
+        service.updateStation(1L, request);
+
+        ArgumentCaptor<Station> captor = ArgumentCaptor.forClass(Station.class);
+        verify(stationRepository).save(captor.capture());
+        assertThat(captor.getValue().getConnectors()).isEmpty();
     }
 
     @Test

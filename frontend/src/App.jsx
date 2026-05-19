@@ -6,6 +6,7 @@ import { Legend } from "./components/MapOverlays.jsx";
 import FloatingSearchBar from "./components/FloatingSearchBar.jsx";
 import DetailPanel from "./components/DetailPanel.jsx";
 import LoginModal from "./components/LoginModal.jsx";
+import CreateStationModal from "./components/CreateStationModal.jsx";
 import { IconChevronLeft, IconChevronRight } from "./components/Icons.jsx";
 
 const API_BASE_URL = "";
@@ -95,6 +96,15 @@ function App() {
     const [activeOverrides, setActiveOverrides] = useState([]);
     const lastEtagRef = useRef(null);
 
+    const [createStationMode, setCreateStationMode] = useState(false);
+    const [createStationDraft, setCreateStationDraft] = useState(null);
+    const [createStationModalOpen, setCreateStationModalOpen] = useState(false);
+    const [createStationSubmitting, setCreateStationSubmitting] = useState(false);
+    const [createStationError, setCreateStationError] = useState(null);
+
+    const canCreateStation =
+        currentUser?.role === "OWNER" || currentUser?.role === "ADMIN";
+
     const effectiveStations = useMemo(() => {
         if (activeOverrides.length === 0) return stations;
         const overrideMap = new Map(activeOverrides.map(o => [o.stationId, o]));
@@ -103,6 +113,12 @@ function App() {
             return o ? { ...s, communityOverride: o, markerStatus: resolveMarkerStatusFromOverride(o) } : s;
         });
     }, [stations, activeOverrides]);
+
+    const canManageStation = (user, details) => {
+        if (!user || !details) return false;
+        if (user.role === "ADMIN") return true;
+        return user.role === "OWNER" && details.owners?.some(o => o.ownerId === user.id);
+    };
 
     const STATUS_FILTER_GROUP = {
         WORKING_UNCONFIRMED: "WORKING",
@@ -287,6 +303,7 @@ function App() {
             accessType: stationDetails.accessType ?? "",
             active: Boolean(stationDetails.active),
             adminStatus: null,
+            connectors: stationDetails.connectors ?? [],
         });
         setStationEditMode(false);
     }, [stationDetails]);
@@ -417,7 +434,10 @@ function App() {
         }
     };
 
-    const handleStationClick = useCallback((id) => setSelectedStationId(id), []);
+    const handleStationClick = useCallback((id) => {
+        if (createStationMode) return;
+        setSelectedStationId(id);
+    }, [createStationMode]);
     const handleFavoriteClick = (favorite) =>
         setSelectedStationId(favorite.stationId);
     const handleClosePanel = () => setSelectedStationId(null);
@@ -521,7 +541,7 @@ function App() {
     };
 
     const handleDeleteStation = async () => {
-        if (!currentUser || currentUser.role !== "ADMIN" || !selectedStationId) return;
+        if (!canManageStation(currentUser, stationDetails) || !selectedStationId) return;
         if (!window.confirm("Na pewno usunąć tę stację?")) return;
 
         try {
@@ -538,6 +558,8 @@ function App() {
                 curr.filter((s) => s.id !== selectedStationId),
             );
             handleClosePanel();
+            lastEtagRef.current = null;
+            await fetchStations();
         } catch (err) {
             setFeedbackActionMessage(err.message);
         }
@@ -658,6 +680,7 @@ function App() {
                 openingHours: stationDetails.openingHours ?? "",
                 accessType: stationDetails.accessType ?? "",
                 active: Boolean(stationDetails.active),
+                connectors: stationDetails.connectors ?? [],
             });
         }
     };
@@ -671,8 +694,7 @@ function App() {
 
     const handleSaveStationEdit = async () => {
         if (
-            !currentUser ||
-            currentUser.role !== "ADMIN" ||
+            !canManageStation(currentUser, stationDetails) ||
             !selectedStationId ||
             !stationEditForm
         ) {
@@ -702,6 +724,7 @@ function App() {
                 openingHours: str(stationEditForm.openingHours) || null,
                 accessType: str(stationEditForm.accessType) || null,
                 active: Boolean(stationEditForm.active),
+                connectors: stationEditForm.connectors ?? [],
             };
 
             const resp = await fetch(
@@ -724,42 +747,8 @@ function App() {
 
             const updatedStation = await resp.json();
             setStationDetails(updatedStation);
-            setStations((currentStations) =>
-                currentStations.map((station) =>
-                    station.id === updatedStation.id
-                        ? {
-                              ...station,
-                              name: updatedStation.name,
-                              latitude: updatedStation.latitude,
-                              longitude: updatedStation.longitude,
-                              city: updatedStation.city,
-                              operatorName: updatedStation.operatorName,
-                          }
-                        : station,
-                ),
-            );
-
-            const reportedStatus = stationEditForm.active ? "WORKING" : "NOT_WORKING";
-            const reportResp = await fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/report`, {
-                method: "POST",
-                headers: buildAuthHeaders(authToken, { "Content-Type": "application/json" }),
-                body: JSON.stringify({ reportedStatus }),
-            });
-            if (reportResp.ok) {
-                const override = await reportResp.json();
-                const confirmResp = await fetch(`${API_BASE_URL}/api/admin/overrides/${override.id}/confirm`, {
-                    method: "POST",
-                    headers: buildAuthHeaders(authToken),
-                });
-                if (confirmResp.ok) {
-                    const confirmed = await confirmResp.json();
-                    setActiveOverrides(prev => [
-                        ...prev.filter(o => o.stationId !== selectedStationId),
-                        confirmed,
-                    ]);
-                    setAdminOverrides(prev => prev.filter(o => o.id !== override.id));
-                }
-            }
+            lastEtagRef.current = null;
+            await fetchStations();
 
             setStationEditMode(false);
             setStationEditMessage("Zapisano zmiany stacji");
@@ -769,6 +758,84 @@ function App() {
             setStationEditLoading(false);
         }
     };
+
+    const handleStartCreateStation = useCallback(() => {
+        if (!canCreateStation) return;
+        setCreateStationMode(true);
+        setCreateStationDraft(null);
+        setCreateStationError(null);
+        setSelectedStationId(null);
+    }, [canCreateStation]);
+
+    const handleCancelCreateStation = useCallback(() => {
+        setCreateStationMode(false);
+        setCreateStationDraft(null);
+        setCreateStationModalOpen(false);
+        setCreateStationError(null);
+        setCreateStationSubmitting(false);
+    }, []);
+
+    const handleMapClickForCreate = useCallback((lat, lon) => {
+        if (!createStationMode) return;
+        setCreateStationDraft({ latitude: lat, longitude: lon });
+        setCreateStationModalOpen(true);
+    }, [createStationMode]);
+
+    const handleSubmitCreateStation = useCallback(async (formValues) => {
+        if (!authToken || !canCreateStation || !createStationDraft) return;
+        setCreateStationSubmitting(true);
+        setCreateStationError(null);
+
+        const str = (v) => (v ?? "").toString().trim();
+        try {
+            const payload = {
+                name: str(formValues.name),
+                latitude: createStationDraft.latitude,
+                longitude: createStationDraft.longitude,
+                addressLine: str(formValues.addressLine) || null,
+                city: str(formValues.city) || null,
+                country: str(formValues.country) || null,
+                operatorName: str(formValues.operatorName) || null,
+                openingHours: str(formValues.openingHours) || null,
+                accessType: str(formValues.accessType) || null,
+                connectors: formValues.connectors ?? [],
+            };
+
+            const resp = await fetch(`${API_BASE_URL}/api/stations`, {
+                method: "POST",
+                headers: buildAuthHeaders(authToken, {
+                    "Content-Type": "application/json",
+                }),
+                body: JSON.stringify(payload),
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => null);
+                throw new Error(err?.message ?? "Nie udało się dodać stacji");
+            }
+
+            const created = await resp.json();
+
+            lastEtagRef.current = null;
+            await fetchStations();
+
+            setCreateStationMode(false);
+            setCreateStationDraft(null);
+            setCreateStationModalOpen(false);
+            setSelectedStationId(created.id);
+            setMapCenter({ lat: Number(created.latitude), lon: Number(created.longitude) });
+        } catch (err) {
+            setCreateStationError(err.message);
+        } finally {
+            setCreateStationSubmitting(false);
+        }
+    }, [authToken, canCreateStation, createStationDraft, fetchStations]);
+
+    useEffect(() => {
+        if (!canCreateStation && createStationMode) {
+            handleCancelCreateStation();
+        }
+    }, [canCreateStation, createStationMode, handleCancelCreateStation]);
 
     const handleViewportChange = useCallback(({ minLat, maxLat, minLon, maxLon, centerLat, centerLon, zoom }) => {
         setMapCenter({ lat: centerLat, lon: centerLon });
@@ -792,6 +859,23 @@ function App() {
     const [sidebarOpen, setSidebarOpen] = useState(true);
 
     const selectedStation = effectiveStations.find((s) => s.id === selectedStationId);
+
+    const handleUpdateUserRole = async (email, role) => {
+        try {
+            const resp = await fetch(`${API_BASE_URL}/api/users/role`, {
+                method: "PUT",
+                headers: buildAuthHeaders(authToken, { "Content-Type": "application/json" }),
+                body: JSON.stringify({ email, role })
+            });
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                throw new Error(errData.message || "Błąd podczas zmiany roli");
+            }
+            alert("Rola została pomyślnie zmieniona na " + role);
+        } catch (err) {
+            alert(err.message);
+        }
+    };
 
     return (
         <div className={`app${sidebarOpen ? "" : " sidebar-hidden"}`}>
@@ -825,6 +909,7 @@ function App() {
                 adminOverridesLoading={adminOverridesLoading}
                 onConfirmOverride={handleConfirmOverride}
                 onRejectOverride={handleRejectOverride}
+                onUpdateUserRole={handleUpdateUserRole}
             />
 
             <main className={`map-area${detailOpen ? " detail-open" : ""}`}>
@@ -842,6 +927,9 @@ function App() {
                     selectedStation={selectedStation}
                     onStationClick={handleStationClick}
                     onViewportChange={handleViewportChange}
+                    createMode={createStationMode}
+                    onMapClickInCreateMode={handleMapClickForCreate}
+                    createDraft={createStationDraft}
                 />
 
                 <div className="map-top">
@@ -858,7 +946,26 @@ function App() {
                     onZoomIn={handleZoomIn}
                     onZoomOut={handleZoomOut}
                     onLocate={handleLocate}
+                    canCreateStation={canCreateStation}
+                    createStationMode={createStationMode}
+                    onStartCreateStation={handleStartCreateStation}
+                    onCancelCreateStation={handleCancelCreateStation}
                 />
+
+                {createStationMode && !createStationModalOpen && (
+                    <div className="create-station-banner">
+                        <span>
+                            Kliknij na mapie miejsce, w którym chcesz dodać nową stację
+                        </span>
+                        <button
+                            className="create-station-banner-cancel"
+                            onClick={handleCancelCreateStation}
+                            type="button"
+                        >
+                            Anuluj
+                        </button>
+                    </div>
+                )}
 
                 <Legend />
             </main>
@@ -893,6 +1000,8 @@ function App() {
                 onSaveStationEdit={handleSaveStationEdit}
                 onStationEditChange={handleStationEditChange}
                 onSubmitReport={handleSubmitReport}
+                canManageStation={canManageStation(currentUser, stationDetails)}
+                isStationAdmin={currentUser?.role === "ADMIN"}
             />
 
             <LoginModal
@@ -903,6 +1012,15 @@ function App() {
                 }}
                 onSubmit={handleLogin}
                 authError={authError}
+            />
+
+            <CreateStationModal
+                open={createStationModalOpen}
+                draft={createStationDraft}
+                submitting={createStationSubmitting}
+                error={createStationError}
+                onSubmit={handleSubmitCreateStation}
+                onClose={handleCancelCreateStation}
             />
         </div>
     );

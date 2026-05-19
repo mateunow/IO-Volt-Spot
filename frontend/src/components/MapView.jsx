@@ -1,6 +1,6 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import { memo, useCallback, useEffect } from "react";
-import { makeIcon, locationIcon } from "./markerIcons.js";
+import { makeIcon, locationIcon, draftStationIcon } from "./markerIcons.js";
 
 const outerBounds = [
     [47.0, 8.07],
@@ -34,6 +34,15 @@ function MapController({ location, selectedStation }) {
         };
     }, [map]);
 
+    return null;
+}
+
+function CreateModeClickHandler({ onMapClick }) {
+    useMapEvents({
+        click(e) {
+            onMapClick?.(e.latlng.lat, e.latlng.lng);
+        },
+    });
     return null;
 }
 
@@ -100,7 +109,17 @@ const StationMarker = memo(function StationMarker({ station, isSelected, onStati
     );
 });
 
-const MapView = memo(function MapView({ location, stations = [], selectedStationId, selectedStation, onStationClick, onViewportChange }) {
+const MapView = memo(function MapView({
+    location,
+    stations = [],
+    selectedStationId,
+    selectedStation,
+    onStationClick,
+    onViewportChange,
+    createMode = false,
+    onMapClickInCreateMode,
+    createDraft,
+}) {
     return (
         <MapContainer
             center={[52.1128, 19.21195]}
@@ -109,12 +128,14 @@ const MapView = memo(function MapView({ location, stations = [], selectedStation
             maxBoundsViscosity={0.8}
             zoomControl={false}
             attributionControl={false}
+            className={createMode ? "map-create-mode" : ""}
         >
             <TileLayer
                 url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
             />
             <MapController location={location} selectedStation={selectedStation} />
             {onViewportChange && <BoundsWatcher onViewportChange={onViewportChange} />}
+            {createMode && <CreateModeClickHandler onMapClick={onMapClickInCreateMode} />}
 
             {location && typeof location.lat === "number" && typeof location.lon === "number" && (
                 <Marker position={[location.lat, location.lon]} icon={locationIcon}>
@@ -130,6 +151,14 @@ const MapView = memo(function MapView({ location, stations = [], selectedStation
                     onStationClick={onStationClick}
                 />
             ))}
+
+            {createMode && createDraft && (
+                <Marker
+                    position={[createDraft.latitude, createDraft.longitude]}
+                    icon={draftStationIcon}
+                    interactive={false}
+                />
+            )}
         </MapContainer>
     );
 });

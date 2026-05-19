@@ -25,4 +25,14 @@ public class UserController {
     public UserResponse getById(@PathVariable Long id) {
         return userService.getById(id);
     }
+
+    @PutMapping("/role")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @pl.voltspot.backend.auth.RequireAuth
+    @pl.voltspot.backend.auth.RequireRole(pl.voltspot.backend.enums.UserRole.ADMIN)
+    public void updateRole(
+            @Valid @RequestBody pl.voltspot.backend.dto.user.UpdateUserRoleRequest request
+    ) {
+        userService.updateRole(request);
+    }
 }

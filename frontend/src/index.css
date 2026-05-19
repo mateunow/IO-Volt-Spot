@@ -1126,6 +1126,98 @@ button { font-family: inherit; cursor: pointer; }
     cursor: pointer;
 }
 
+/* ============ CREATE STATION ============ */
+.modal-wide {
+    width: 560px;
+    max-width: 92vw;
+}
+.modal-coords {
+    margin: -8px 0 16px;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+}
+.modal-coords strong {
+    color: var(--ink);
+    font-weight: 600;
+}
+.create-station-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+    margin-bottom: 4px;
+}
+.create-station-grid label {
+    margin-bottom: 0;
+}
+
+.create-station-btn.active {
+    color: var(--accent-ink);
+    background: oklch(0.78 0.17 140 / .15);
+}
+
+.create-station-banner {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 800;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 10px 8px 10px 18px;
+    box-shadow: var(--shadow-md);
+    font-size: 13px;
+    color: var(--ink);
+    max-width: calc(100% - 32px);
+    pointer-events: auto;
+}
+.create-station-banner-cancel {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+.create-station-banner-cancel:hover {
+    background: #FEF2F2;
+    color: #B91C1C;
+}
+
+.leaflet-container.map-create-mode {
+    cursor: crosshair;
+}
+.map-create-mode .leaflet-marker-icon {
+    cursor: crosshair;
+}
+.ev-marker-draft {
+    animation: draft-pulse 1.4s ease-in-out infinite;
+    transform-origin: center bottom;
+}
+@keyframes draft-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+}
+
+@media (max-width: 640px) {
+    .create-station-grid {
+        grid-template-columns: 1fr;
+    }
+    .modal-wide {
+        width: 100%;
+    }
+}
+
 /* ============ EMPTY / LOADING STATES ============ */
 .empty-state {
     padding: 30px 16px;

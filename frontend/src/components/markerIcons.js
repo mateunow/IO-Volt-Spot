@@ -59,6 +59,26 @@ export function makeIcon(markerStatus, isSelected = false) {
     return icon;
 }
 
+export const draftStationIcon = L.divIcon({
+    className: "ev-marker ev-marker-draft",
+    html: `
+    <svg width="42" height="52" viewBox="0 0 42 52" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="draftShadow" x="-20%" y="-10%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-opacity="0.4"/>
+        </filter>
+      </defs>
+      <path d="M21 2C10.5 2 2 10.5 2 21c0 13 16.6 27.5 17.3 28.2a2.4 2.4 0 0 0 3.4 0C23.4 48.5 40 34 40 21 40 10.5 31.5 2 21 2z"
+            fill="oklch(0.78 0.17 140)" stroke="#15803D" stroke-width="2" filter="url(#draftShadow)"/>
+      <g transform="translate(21,21)" stroke="#fff" stroke-width="2.4" stroke-linecap="round">
+        <line x1="-6" y1="0" x2="6" y2="0"/>
+        <line x1="0" y1="-6" x2="0" y2="6"/>
+      </g>
+    </svg>`,
+    iconSize: [42, 52],
+    iconAnchor: [21, 50],
+});
+
 export const locationIcon = L.divIcon({
     className: "ev-marker",
     html: `
