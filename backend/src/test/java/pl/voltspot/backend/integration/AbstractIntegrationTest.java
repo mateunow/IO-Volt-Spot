@@ -2,6 +2,7 @@ package pl.voltspot.backend.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -15,6 +16,7 @@ import pl.voltspot.backend.dto.auth.RegisterRequest;
 import pl.voltspot.backend.entity.User;
 import pl.voltspot.backend.enums.UserRole;
 import pl.voltspot.backend.repository.UserRepository;
+import pl.voltspot.backend.service.StationCacheService;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -36,6 +38,16 @@ public abstract class AbstractIntegrationTest {
 
     @Autowired
     protected UserRepository userRepository;
+
+    @Autowired
+    private StationCacheService stationCacheService;
+
+    // Cache singleton state survives transactional rollback between tests, so we
+    // resync it from the DB before each test to keep cached endpoints deterministic.
+    @BeforeEach
+    void refreshStationCache() {
+        stationCacheService.refresh();
+    }
 
 
     protected LoginResponse registerUser(String email, String password, String displayName) throws Exception {
