@@ -1,10 +1,12 @@
 FROM eclipse-temurin:25-jdk AS builder
 WORKDIR /app
 
-COPY . .
+COPY gradle/ gradle/
+COPY gradlew build.gradle settings.gradle* gradle.properties* ./
+RUN chmod +x ./gradlew && ./gradlew dependencies --no-daemon
 
-RUN chmod +x ./gradlew
-RUN ./gradlew clean bootJar -x test
+COPY src/ src/
+RUN ./gradlew bootJar -x test --no-daemon
 
 FROM eclipse-temurin:25-jre
 WORKDIR /app

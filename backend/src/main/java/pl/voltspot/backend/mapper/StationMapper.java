@@ -2,15 +2,18 @@ package pl.voltspot.backend.mapper;
 
 import pl.voltspot.backend.dto.external.ExternalOCMStation;
 import pl.voltspot.backend.dto.feedback.StationFeedbackResponse;
+import pl.voltspot.backend.dto.report.ConnectorStatusDto;
 import pl.voltspot.backend.dto.station.*;
 import pl.voltspot.backend.dto.user.UserResponse;
 import pl.voltspot.backend.entity.*;
 import pl.voltspot.backend.entity.User;
+import pl.voltspot.backend.enums.ReportedStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static pl.voltspot.backend.mapper.ConnectionTypeID.CONNECTORS;
@@ -80,7 +83,23 @@ public final class StationMapper {
                 connector.getConnectorType(),
                 connector.getCurrentType(),
                 connector.getPowerKw(),
-                connector.getQuantity()
+                connector.getQuantity(),
+                null,
+                null
+        );
+    }
+
+    public static StationConnectorResponse toConnectorResponse(StationConnector connector,
+                                                                ReportedStatus communityStatus,
+                                                                Integer reportedOccupiedCount) {
+        return new StationConnectorResponse(
+                connector.getId(),
+                connector.getConnectorType(),
+                connector.getCurrentType(),
+                connector.getPowerKw(),
+                connector.getQuantity(),
+                communityStatus,
+                reportedOccupiedCount
         );
     }
 
@@ -111,10 +130,22 @@ public final class StationMapper {
     }
 
     public static StationDetailsResponse toDetailsResponse(Station station, StationStatusSnapshot latestStatus) {
+        return toDetailsResponse(station, latestStatus, Map.of());
+    }
+
+    public static StationDetailsResponse toDetailsResponse(Station station, StationStatusSnapshot latestStatus,
+                                                            Map<Long, ConnectorStatusDto> connectorStatuses) {
         List<StationConnectorResponse> connectors = station.getConnectors()
                 .stream()
                 .sorted(Comparator.comparing(StationConnector::getId))
-                .map(StationMapper::toConnectorResponse)
+                .map(c -> {
+                    ConnectorStatusDto dto = connectorStatuses.get(c.getId());
+                    return toConnectorResponse(
+                            c,
+                            dto != null ? dto.communityStatus() : null,
+                            dto != null ? dto.reportedOccupiedCount() : null
+                    );
+                })
                 .toList();
 
         List<StationOwnerResponse> owners = station.getOwners()

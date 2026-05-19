@@ -2,12 +2,16 @@ package pl.voltspot.backend.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import pl.voltspot.backend.entity.Station;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface StationRepository extends JpaRepository<Station, Long> {
+
+    @Query("SELECT s FROM Station s LEFT JOIN FETCH s.connectors WHERE s.id = :id")
+    Optional<Station> findWithConnectorsById(@Param("id") Long id);
 
     @Query("""
             SELECT s FROM Station s

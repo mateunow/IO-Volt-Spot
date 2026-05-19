@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { IconClose, IconHeart, IconPin, IconPlug } from "./Icons.jsx";
 
 const OPERATIONAL_STATUS_OPTIONS = [
@@ -59,22 +59,85 @@ function DetailPanel({
     onSaveStationEdit,
     onStationEditChange,
     onSubmitReport,
+    onSubmitConnectorReport,
 }) {
     const [feedbackStatus, setFeedbackStatus] = useState("WORKING");
     const [feedbackComment, setFeedbackComment] = useState("");
+    const [connectorStates, setConnectorStates] = useState({});
+
+    const stationId = (details || station)?.id;
+    useEffect(() => {
+        setConnectorStates({});
+    }, [stationId]);
 
     const handleSubmit = () => {
         onSubmitFeedback(feedbackStatus, feedbackComment);
         setFeedbackComment("");
-        if (onSubmitReport && (feedbackStatus === "WORKING" || feedbackStatus === "NOT_WORKING" || feedbackStatus === "BUSY")) {
-            const reportStatus = feedbackStatus === "BUSY" ? "OCCUPIED" : feedbackStatus;
-            onSubmitReport(reportStatus);
+        if (onSubmitReport && (feedbackStatus === "WORKING" || feedbackStatus === "NOT_WORKING")) {
+            onSubmitReport(feedbackStatus);
         }
+    };
+
+    const setConnState = (connId, update) => {
+        setConnectorStates((prev) => ({
+            ...prev,
+            [connId]: { ...prev[connId], ...update },
+        }));
+    };
+
+    const handleConnectorSubmit = async (connector) => {
+        const cs = connectorStates[connector.id] || {};
+        const qty = connector.quantity ?? 1;
+        const apiStatus = cs.status === "ZAJETE" ? "OCCUPIED" : cs.status;
+        const occupiedCount = cs.status === "ZAJETE" ? cs.count : null;
+        setConnState(connector.id, { loading: true });
+        try {
+            await onSubmitConnectorReport(connector.id, apiStatus, occupiedCount);
+            setConnState(connector.id, { expanded: false, status: null, count: null, loading: false });
+        } catch {
+            setConnState(connector.id, { loading: false });
+        }
+    };
+
+    const canSubmitConnector = (cs) => {
+        if (!cs.status) return false;
+        if (cs.status === "ZAJETE" && cs.count == null) return false;
+        return true;
     };
 
     const data = details || station || {};
     const latest = data.latestStatus ?? {};
     const connectors = data.connectors ?? [];
+
+    const stationOverride = station?.communityOverride;
+    const stationNotWorking = stationOverride?.reportedStatus === "NOT_WORKING";
+
+    const communityStats = useMemo(() => {
+        if (stationNotWorking) {
+            const total = connectors.reduce((sum, c) => sum + (c.quantity ?? 1), 0);
+            return { availableCount: 0, occupiedCount: 0, outOfServiceCount: total, unknownCount: 0 };
+        }
+        const withStatus = connectors.filter((c) => c.communityStatus != null);
+        if (withStatus.length === 0) return null;
+        let available = 0, occupied = 0, outOfService = 0, unknown = 0;
+        for (const c of connectors) {
+            const qty = c.quantity ?? 1;
+            if (c.communityStatus === "OCCUPIED") {
+                const occ = c.reportedOccupiedCount ?? qty;
+                occupied += occ;
+                available += qty - occ;
+            } else if (c.communityStatus === "WORKING") {
+                available += qty;
+            } else if (c.communityStatus === "NOT_WORKING") {
+                outOfService += qty;
+            } else {
+                unknown += qty;
+            }
+        }
+        return { availableCount: available, occupiedCount: occupied, outOfServiceCount: outOfService, unknownCount: unknown };
+    }, [connectors, stationNotWorking]);
+
+    const displayStats = communityStats ?? latest;
     const maxPower = maxConnectorPower(connectors);
 
     const operatorInitial = (data.operatorName ?? "?")[0]?.toUpperCase() ?? "?";
@@ -361,16 +424,16 @@ function DetailPanel({
                 )}
 
                 {/* AVAILABILITY GRID */}
-                {latest && (
+                {(latest || communityStats) && (
                     <div className="section">
                         <div className="section-title">
                             Dostępność złączy
-                            <span className="pill">w tej chwili</span>
+                            <span className="pill">{communityStats ? "społeczność" : "w tej chwili"}</span>
                         </div>
                         <div className="avail-grid">
                             <div className="avail-tile">
                                 <div className="n">
-                                    {latest.availableCount ?? 0}
+                                    {displayStats.availableCount ?? 0}
                                 </div>
                                 <div className="l">
                                     <span
@@ -385,7 +448,7 @@ function DetailPanel({
                             </div>
                             <div className="avail-tile">
                                 <div className="n">
-                                    {latest.occupiedCount ?? 0}
+                                    {displayStats.occupiedCount ?? 0}
                                 </div>
                                 <div className="l">
                                     <span
@@ -400,7 +463,7 @@ function DetailPanel({
                             </div>
                             <div className="avail-tile">
                                 <div className="n">
-                                    {latest.outOfServiceCount ?? 0}
+                                    {displayStats.outOfServiceCount ?? 0}
                                 </div>
                                 <div className="l">
                                     <span
@@ -415,7 +478,7 @@ function DetailPanel({
                             </div>
                             <div className="avail-tile">
                                 <div className="n">
-                                    {latest.unknownCount ?? 0}
+                                    {displayStats.unknownCount ?? 0}
                                 </div>
                                 <div className="l">
                                     <span
@@ -439,44 +502,103 @@ function DetailPanel({
                             <span className="pill">{connectors.length}</span>
                         </div>
                         <div className="connector-list">
-                            {connectors.map((c) => (
-                                <div key={c.id} className="conn">
-                                    <div className="conn-icon">
-                                        <IconPlug />
-                                    </div>
-                                    <div className="conn-info">
-                                        <div className="type">
-                                            {c.connectorType === "Unknown"
-                                                ? "Złącze"
-                                                : (c.connectorType ?? "Złącze")}
-                                            {c.quantity > 1
-                                                ? ` × ${c.quantity}`
-                                                : ""}
+                            {connectors.map((c) => {
+                                const cs = connectorStates[c.id] || {};
+                                const qty = c.quantity ?? 1;
+                                return (
+                                    <div key={c.id} className="conn-card">
+                                        <div className="conn">
+                                            <div className="conn-icon">
+                                                <IconPlug />
+                                            </div>
+                                            <div className="conn-info">
+                                                <div className="type">
+                                                    {c.connectorType === "Unknown"
+                                                        ? "Złącze"
+                                                        : (c.connectorType ?? "Złącze")}
+                                                    {qty > 1 ? ` × ${qty}` : ""}
+                                                </div>
+                                                <div className="desc">
+                                                    {c.currentType ?? "—"}
+                                                </div>
+                                            </div>
+                                            <div className="conn-power">
+                                                {c.powerKw ?? "—"}
+                                                <span className="u">kW</span>
+                                            </div>
+                                            <div className="conn-status-badge">
+                                                {(stationNotWorking || c.communityStatus === "NOT_WORKING") && (
+                                                    <span className="conn-badge not-working">Nie działa</span>
+                                                )}
+                                                {!stationNotWorking && c.communityStatus === "OCCUPIED" && (
+                                                    <span className="conn-badge occupied">
+                                                        {c.reportedOccupiedCount ?? "?"}/{qty} zajętych
+                                                    </span>
+                                                )}
+                                                {!stationNotWorking && c.communityStatus === "WORKING" && (
+                                                    <span className="conn-badge working">Działa</span>
+                                                )}
+                                            </div>
+                                            {currentUser && (
+                                                <button
+                                                    className={`conn-toggle${cs.expanded ? " open" : ""}`}
+                                                    onClick={() => setConnState(c.id, { expanded: !cs.expanded, status: null, count: null })}
+                                                    aria-label="Zgłoś status złącza"
+                                                >
+                                                    Zgłoś {cs.expanded ? "▲" : "▼"}
+                                                </button>
+                                            )}
                                         </div>
-                                        <div className="desc">
-                                            {c.currentType ?? "—"}
-                                        </div>
+                                        {cs.expanded && (
+                                            <div className="conn-report">
+                                                <div className="conn-report-chips">
+                                                    {["WORKING", "NOT_WORKING", "ZAJETE"].map((st) => (
+                                                        <button
+                                                            key={st}
+                                                            className={`conn-chip${cs.status === st ? " active" : ""}`}
+                                                            disabled={cs.loading}
+                                                            onClick={() => setConnState(c.id, { status: st, count: null })}
+                                                        >
+                                                            {st === "WORKING" ? "Działa" : st === "NOT_WORKING" ? "Nie działa" : "Zajęte"}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                {cs.status === "ZAJETE" && (
+                                                    <div className="conn-count-picker">
+                                                        <span className="conn-count-label">ile zajętych?</span>
+                                                        {Array.from({ length: qty + 1 }, (_, i) => i).map((n) => (
+                                                            <button
+                                                                key={n}
+                                                                className={`conn-count-btn${cs.count === n ? " active" : ""}`}
+                                                                disabled={cs.loading}
+                                                                onClick={() => setConnState(c.id, { count: n })}
+                                                            >
+                                                                {n === 0 ? "0" : n}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {canSubmitConnector(cs) && (
+                                                    <button
+                                                        className="conn-submit"
+                                                        disabled={cs.loading}
+                                                        onClick={() => handleConnectorSubmit(c)}
+                                                    >
+                                                        {cs.loading ? "Wysyłanie…" : "Wyślij"}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="conn-power">
-                                        {c.powerKw ?? "—"}
-                                        <span className="u">kW</span>
-                                    </div>
-                                    <div
-                                        className="conn-status"
-                                        style={{
-                                            background:
-                                                "var(--status-available)",
-                                        }}
-                                    />
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 )}
 
                 {/* FEEDBACK FORM */}
                 <div className="section">
-                    <div className="section-title">Zgłoś status</div>
+                    <div className="section-title">Oceń stację</div>
                     {!currentUser && (
                         <p
                             className="empty-state"
@@ -488,7 +610,7 @@ function DetailPanel({
                     {currentUser && (
                         <>
                             <div className="feedback-actions">
-                                {["WORKING", "NOT_WORKING", "BUSY"].map(
+                                {["WORKING", "NOT_WORKING"].map(
                                     (st) => (
                                         <button
                                             key={st}

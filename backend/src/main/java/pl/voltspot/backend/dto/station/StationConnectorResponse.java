@@ -1,5 +1,7 @@
 package pl.voltspot.backend.dto.station;
 
+import pl.voltspot.backend.enums.ReportedStatus;
+
 import java.math.BigDecimal;
 
 public record StationConnectorResponse(
@@ -7,6 +9,8 @@ public record StationConnectorResponse(
         String connectorType,
         String currentType,
         BigDecimal powerKw,
-        Integer quantity
+        Integer quantity,
+        ReportedStatus communityStatus,
+        Integer reportedOccupiedCount
 ) {
 }

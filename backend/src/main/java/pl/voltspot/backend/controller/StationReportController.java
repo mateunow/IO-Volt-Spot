@@ -8,17 +8,22 @@ import pl.voltspot.backend.auth.AuthContext;
 import pl.voltspot.backend.auth.RequireAuth;
 import pl.voltspot.backend.auth.RequireRole;
 import pl.voltspot.backend.dto.report.CommunityOverrideResponse;
+import pl.voltspot.backend.dto.report.ConnectorReportRequest;
+import pl.voltspot.backend.dto.report.ConnectorReportResponse;
 import pl.voltspot.backend.dto.report.StationReportRequest;
+import pl.voltspot.backend.enums.ReportedStatus;
 import pl.voltspot.backend.enums.UserRole;
+import pl.voltspot.backend.exceptions.BadRequestException;
+import pl.voltspot.backend.service.ConnectorReportService;
 import pl.voltspot.backend.service.StationReportService;
 
 import java.util.List;
-
 @RestController
 @RequiredArgsConstructor
 public class StationReportController {
 
     private final StationReportService reportService;
+    private final ConnectorReportService connectorReportService;
 
     @PostMapping("/api/stations/{stationId}/report")
     @ResponseStatus(HttpStatus.CREATED)
@@ -27,8 +32,23 @@ public class StationReportController {
             @PathVariable Long stationId,
             @Valid @RequestBody StationReportRequest request
     ) {
+        if (request.reportedStatus() == ReportedStatus.OCCUPIED) {
+            throw new BadRequestException("Status zajęta należy zgłaszać przez panel złączy");
+        }
         Long userId = AuthContext.get().id();
         return reportService.submitReport(stationId, userId, request.reportedStatus());
+    }
+
+    @PostMapping("/api/stations/{stationId}/connector-reports")
+    @ResponseStatus(HttpStatus.CREATED)
+    @RequireAuth
+    public ConnectorReportResponse submitConnectorReport(
+            @PathVariable Long stationId,
+            @Valid @RequestBody ConnectorReportRequest request
+    ) {
+        Long userId = AuthContext.get().id();
+        return connectorReportService.submitReport(
+                stationId, userId, request.connectorId(), request.reportedStatus(), request.occupiedCount());
     }
 
     @GetMapping("/api/community/overrides/active")

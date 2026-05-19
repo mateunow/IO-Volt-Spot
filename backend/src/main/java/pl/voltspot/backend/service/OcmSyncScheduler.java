@@ -19,6 +19,7 @@ public class OcmSyncScheduler {
 
     private final StationService stationService;
     private final StationReportService stationReportService;
+    private final ConnectorReportService connectorReportService;
 
     @Scheduled(cron = "0 0 */12 * * *")
     public void syncPoland() {
@@ -30,5 +31,10 @@ public class OcmSyncScheduler {
             log.error("Scheduled OCM sync for Poland failed.", ex);
         }
         stationReportService.expireOverrides();
+    }
+
+    @Scheduled(fixedDelay = 5 * 60 * 1000)
+    public void expireConnectorReports() {
+        connectorReportService.expireReports();
     }
 }

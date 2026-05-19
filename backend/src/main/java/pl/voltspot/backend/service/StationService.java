@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pl.voltspot.backend.client.OCMClient;
 import pl.voltspot.backend.dto.external.ExternalOCMStation;
+import pl.voltspot.backend.dto.report.ConnectorStatusDto;
 import pl.voltspot.backend.dto.station.StationDetailsResponse;
 import pl.voltspot.backend.dto.station.StationMarkerResponse;
 import pl.voltspot.backend.dto.station.StationStatusSnapshotResponse;
@@ -37,6 +38,7 @@ public class StationService {
     private final StationRepository stationRepository;
     private final StationStatusSnapshotRepository snapshotRepository;
     private final OCMClient ocmClient;
+    private final ConnectorReportService connectorReportService;
 
     public List<StationMarkerResponse> getStations(Double minLat, Double maxLat, Double minLon, Double maxLon) {
         List<Station> stations;
@@ -83,13 +85,19 @@ public class StationService {
 
     @Transactional(readOnly = true)
     public StationDetailsResponse getStationById(Long stationId) {
-        Station station = stationRepository.findById(stationId)
+        Station station = stationRepository.findWithConnectorsById(stationId)
                 .orElseThrow(() -> new NotFoundException("Nie znaleziono stacji o id " + stationId));
 
         StationStatusSnapshot latestStatus = snapshotRepository
                 .findTopByStationIdOrderByRecordedAtDesc(stationId)
                 .orElse(null);
-        return StationMapper.toDetailsResponse(station, latestStatus);
+
+        Map<Long, ConnectorStatusDto> connectorStatuses = connectorReportService
+                .getConnectorStatuses(new ArrayList<>(station.getConnectors()), stationId)
+                .stream()
+                .collect(Collectors.toMap(ConnectorStatusDto::connectorId, dto -> dto));
+
+        return StationMapper.toDetailsResponse(station, latestStatus, connectorStatuses);
     }
 
     @Transactional(readOnly = true)
