@@ -236,6 +236,9 @@ function App() {
             return;
         }
 
+        const controller = new AbortController();
+        const { signal } = controller;
+
         (async () => {
             setDetailsLoading(true);
             setDetailsError(null);
@@ -243,30 +246,34 @@ function App() {
             setFeedbacksError(null);
             try {
                 const [detailsResponse, feedbackResponse] = await Promise.all([
-                    fetch(`${API_BASE_URL}/api/stations/${selectedStationId}`),
-                    fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/feedback`),
+                    fetch(`${API_BASE_URL}/api/stations/${selectedStationId}`, { signal }),
+                    fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/feedback`, { signal }),
                 ]);
                 if (!detailsResponse.ok) throw new Error(`HTTP ${detailsResponse.status}`);
                 setStationDetails(await detailsResponse.json());
                 if (!feedbackResponse.ok) throw new Error(`HTTP ${feedbackResponse.status}`);
                 setStationFeedbacks(await feedbackResponse.json());
 
-                const favoriteResponse = authToken
-                    ? await fetch(`${API_BASE_URL}/api/favorites/${selectedStationId}/is-favorited`, {
-                          headers: buildAuthHeaders(authToken),
-                      })
-                    : await fetch(`${API_BASE_URL}/api/favorites/${selectedStationId}/is-favorited`);
-
+                const favHeaders = authToken ? buildAuthHeaders(authToken) : {};
+                const favoriteResponse = await fetch(
+                    `${API_BASE_URL}/api/favorites/${selectedStationId}/is-favorited`,
+                    { headers: favHeaders, signal },
+                );
                 setIsFavorited(favoriteResponse.ok ? Boolean(await favoriteResponse.json()) : false);
             } catch (error) {
+                if (error.name === "AbortError") return;
                 console.error(error);
                 setDetailsError("Nie udało się pobrać szczegółów stacji");
                 setFeedbacksError("Nie udało się pobrać opinii");
             } finally {
-                setDetailsLoading(false);
-                setFeedbacksLoading(false);
+                if (!signal.aborted) {
+                    setDetailsLoading(false);
+                    setFeedbacksLoading(false);
+                }
             }
         })();
+
+        return () => controller.abort();
     }, [selectedStationId, authToken]);
 
     useEffect(() => {

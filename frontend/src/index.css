@@ -51,14 +51,9 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ============ APP LAYOUT ============ */
 .app {
-    display: grid;
-    grid-template-columns: 360px 1fr;
+    display: flex;
     height: 100vh;
     width: 100vw;
-    transition: grid-template-columns .28s cubic-bezier(.2,.7,.2,1);
-}
-.app.sidebar-hidden {
-    grid-template-columns: 0px 1fr;
 }
 
 /* ============ SIDEBAR ============ */
@@ -71,7 +66,13 @@ button { font-family: inherit; cursor: pointer; }
     overflow: hidden;
     position: relative;
     z-index: 500;
-    min-width: 0;
+    flex-shrink: 0;
+    width: 360px;
+    will-change: width;
+    transition: width .28s cubic-bezier(.2,.7,.2,1);
+}
+.app.sidebar-hidden .sidebar {
+    width: 0;
 }
 
 .brand {
@@ -487,7 +488,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 /* ============ MAP AREA ============ */
-.map-area { position: relative; overflow: hidden; }
+.map-area { position: relative; overflow: hidden; flex: 1; min-width: 0; }
 .leaflet-container { height: 100%; width: 100%; background: #E8EAE4; }
 
 /* Hide default Leaflet zoom control (we use our own) */
@@ -1076,7 +1077,22 @@ button { font-family: inherit; cursor: pointer; }
     width: 380px;
     max-width: 90vw;
     box-shadow: var(--shadow-lg);
+    position: relative;
 }
+.modal-close {
+    position: absolute;
+    top: 14px; right: 14px;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    padding: 4px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color .15s, background .15s;
+}
+.modal-close:hover { color: #E8EAED; background: rgba(255,255,255,0.06); }
 .modal h3 {
     margin: 0 0 18px;
     font-size: 20px;

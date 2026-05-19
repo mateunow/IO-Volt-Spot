@@ -3,8 +3,8 @@ import StationCard from "./StationCard.jsx";
 import { IconBolt, IconChevronRight } from "./Icons.jsx";
 import { STATUS_COLORS } from "./markerIcons.js";
 
-const INITIAL_LIST_LIMIT = 200;
-const LIST_LIMIT_STEP = 200;
+const INITIAL_LIST_LIMIT = 50;
+const LIST_LIMIT_STEP = 50;
 
 const FavoriteRow = memo(function FavoriteRow({ favorite, isActive, onSelect, onRemove }) {
     const station = useMemo(

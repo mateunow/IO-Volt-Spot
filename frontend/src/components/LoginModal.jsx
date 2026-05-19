@@ -14,8 +14,9 @@ function LoginModal({ open, onClose, onSubmit, authError }) {
     };
 
     return (
-        <div className="modal-backdrop" onClick={onClose}>
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop">
+            <div className="modal">
+                <button type="button" className="modal-close" onClick={onClose}>✕</button>
                 <h3>{mode === "login" ? "Logowanie" : "Rejestracja"}</h3>
                 <form onSubmit={handleSubmit}>
                     {mode === "register" && (
