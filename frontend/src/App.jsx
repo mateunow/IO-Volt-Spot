@@ -391,6 +391,49 @@ function App() {
         }
     };
 
+    const handleSubmitConnectorReport = async (connectorId, reportedStatus, occupiedCount) => {
+        if (!selectedStationId || !authToken) return;
+        const resp = await fetch(`${API_BASE_URL}/api/stations/${selectedStationId}/connector-reports`, {
+            method: "POST",
+            headers: buildAuthHeaders(authToken, { "Content-Type": "application/json" }),
+            body: JSON.stringify({ connectorId, reportedStatus, occupiedCount }),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.message || `HTTP ${resp.status}`);
+        }
+        const { connectorStatuses, stationOverride } = await resp.json();
+        setStationDetails((prev) => {
+            if (!prev) return prev;
+            const statusMap = Object.fromEntries(connectorStatuses.map((s) => [s.connectorId, s]));
+            return {
+                ...prev,
+                connectors: prev.connectors.map((c) => {
+                    const s = statusMap[c.id];
+                    if (!s) return c;
+                    return { ...c, communityStatus: s.communityStatus, reportedOccupiedCount: s.reportedOccupiedCount };
+                }),
+            };
+        });
+        if (stationOverride) {
+            setActiveOverrides((prev) => [
+                ...prev.filter((o) => o.stationId !== selectedStationId),
+                stationOverride,
+            ]);
+            if (currentUser?.role === "ADMIN") {
+                setAdminOverrides((prev) => {
+                    const filtered = prev.filter((o) => o.stationId !== selectedStationId);
+                    return stationOverride.state === "PENDING" ? [...filtered, stationOverride] : filtered;
+                });
+            }
+        } else {
+            setActiveOverrides((prev) => prev.filter((o) => o.stationId !== selectedStationId));
+            if (currentUser?.role === "ADMIN") {
+                setAdminOverrides((prev) => prev.filter((o) => o.stationId !== selectedStationId));
+            }
+        }
+    };
+
     const handleConfirmOverride = async (overrideId) => {
         try {
             const resp = await fetch(`${API_BASE_URL}/api/admin/overrides/${overrideId}/confirm`, {
@@ -897,6 +940,7 @@ function App() {
                 onSaveStationEdit={handleSaveStationEdit}
                 onStationEditChange={handleStationEditChange}
                 onSubmitReport={handleSubmitReport}
+                onSubmitConnectorReport={handleSubmitConnectorReport}
             />
 
             <LoginModal

@@ -92,19 +92,30 @@ public class StationReportService {
             if (reportedStatus == previousStatus) {
                 override.setChallengeCount(0);
             } else {
-                boolean inGracePeriod = override.getConfirmedAt() != null &&
-                    Instant.now().isBefore(override.getConfirmedAt().plus(CONFIRMED_GRACE_HOURS, ChronoUnit.HOURS));
-                override.setChallengeCount(override.getChallengeCount() + 1);
-
-                int challengeCount = override.getChallengeCount();
-                if (!inGracePeriod || challengeCount >= GRACE_CHALLENGE_THRESHOLD) {
+                boolean isAutoOccupied = previousStatus == ReportedStatus.OCCUPIED
+                        && override.getConfirmedByAdmin() == null;
+                if (isAutoOccupied) {
                     override.setState(OverrideState.PENDING);
                     override.setReportedStatus(reportedStatus);
                     override.setConsecutiveCount(1);
                     override.setChallengeCount(0);
                     override.setExpiresAt(null);
-                    log.info("Override reverted to PENDING for station {} (inGrace: {}, challenges: {})",
-                            stationId, inGracePeriod, challengeCount);
+                    log.info("Auto-OCCUPIED override reverted to PENDING for station {} by user report", stationId);
+                } else {
+                    boolean inGracePeriod = override.getConfirmedAt() != null &&
+                        Instant.now().isBefore(override.getConfirmedAt().plus(CONFIRMED_GRACE_HOURS, ChronoUnit.HOURS));
+                    override.setChallengeCount(override.getChallengeCount() + 1);
+
+                    int challengeCount = override.getChallengeCount();
+                    if (!inGracePeriod || challengeCount >= GRACE_CHALLENGE_THRESHOLD) {
+                        override.setState(OverrideState.PENDING);
+                        override.setReportedStatus(reportedStatus);
+                        override.setConsecutiveCount(1);
+                        override.setChallengeCount(0);
+                        override.setExpiresAt(null);
+                        log.info("Override reverted to PENDING for station {} (inGrace: {}, challenges: {})",
+                                stationId, inGracePeriod, challengeCount);
+                    }
                 }
             }
         } else {

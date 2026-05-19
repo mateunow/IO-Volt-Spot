@@ -1,5 +1,7 @@
 package pl.voltspot.backend.dto.external;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.List;
 
 public record ExternalOCMStation(
@@ -19,17 +21,16 @@ public record ExternalOCMStation(
             String town,
             Double latitude,
             Double longitude,
-            Integer countryId
+            @JsonProperty("countryID") Integer countryId
     ) {}
 
     public record Connection(
             Long id,
-            Integer connectionTypeId,
+            @JsonProperty("connectionTypeID") Integer connectionTypeId,
             Double powerKW,
-            Integer currentTypeId,
+            @JsonProperty("currentTypeID") Integer currentTypeId,
             Integer quantity,
-            Integer statusTypeId
-            //Co to jest externalConnectorKey....
+            @JsonProperty("statusTypeID") Integer statusTypeId
     ) {}
 
     public record StatusType(
