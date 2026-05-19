@@ -779,7 +779,7 @@ function App() {
                 operatorName: str(stationEditForm.operatorName) || null,
                 openingHours: str(stationEditForm.openingHours) || null,
                 accessType: str(stationEditForm.accessType) || null,
-                active: stationEditForm.adminStatus !== "NOT_WORKING",
+                active: stationDetails.active,
                 connectors: stationEditForm.connectors ?? [],
             };
 
@@ -803,8 +803,23 @@ function App() {
 
             const updatedStation = await resp.json();
             setStationDetails(updatedStation);
+            
             lastEtagRef.current = null;
             await fetchStations();
+
+            const statusResp = await fetch(`${API_BASE_URL}/api/admin/stations/${selectedStationId}/set-status`, {
+                method: "POST",
+                headers: buildAuthHeaders(authToken, { "Content-Type": "application/json" }),
+                body: JSON.stringify({ reportedStatus: stationEditForm.adminStatus }),
+            });
+
+            if (statusResp.ok) {
+                const confirmed = await statusResp.json();
+                setActiveOverrides(prev => [
+                    ...prev.filter(o => o.stationId !== selectedStationId),
+                    confirmed,
+                ]);
+            }
 
             setStationEditMode(false);
             setStationEditMessage("Zapisano zmiany stacji");
