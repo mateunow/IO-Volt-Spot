@@ -51,13 +51,6 @@ public class StationService {
         if (noFilters) {
             stations = stationRepository.findByActiveTrueOrderByIdAsc();
         } else {
-            try {
-                fetchStationsFromOCM(minLat, minLon, maxLat, maxLon);
-            } catch (RuntimeException ex) {
-                log.warn("OCM refresh failed for bbox [{},{},{},{}]. Returning cached DB data.",
-                        minLat, minLon, maxLat, maxLon, ex);
-            }
-
             stations = stationRepository.findByActiveTrueAndLatitudeBetweenAndLongitudeBetweenOrderByIdAsc(
                     minLat, maxLat, minLon, maxLon
             );
@@ -67,11 +60,10 @@ public class StationService {
     }
 
     private List<StationMarkerResponse> toMarkerResponsesWithStatus(List<Station> stations) {
-        if (stations.isEmpty()) {
-            return List.of();
-        }
+        if (stations.isEmpty()) return List.of();
 
         List<Long> ids = stations.stream().map(Station::getId).toList();
+
         Map<Long, StationStatusSnapshot> latestByStation = snapshotRepository
                 .findLatestForStations(ids)
                 .stream()
@@ -128,6 +120,7 @@ public class StationService {
         station.setOpeningHours(request.openingHours());
         station.setAccessType(request.accessType());
         station.setActive(request.active());
+        station.setAdminActiveLockedUntil(Instant.now().plus(24, java.time.temporal.ChronoUnit.HOURS));
         station.setLastSyncedAt(Instant.now());
 
         Station savedStation = stationRepository.save(station);
@@ -206,7 +199,10 @@ public class StationService {
         target.setOperatorName(source.getOperatorName());
         target.setOpeningHours(source.getOpeningHours());
         target.setAccessType(source.getAccessType());
-        target.setActive(source.isActive());
+        Instant lockedUntil = target.getAdminActiveLockedUntil();
+        if (lockedUntil == null || lockedUntil.isBefore(Instant.now())) {
+            target.setActive(source.isActive());
+        }
         target.setLastSyncedAt(Instant.now());
 
         target.getConnectors().clear();

@@ -23,22 +23,13 @@ function scoreMatch(q, station) {
     return 0;
 }
 
-function FloatingSearchBar({ setLocation, searchRadiusKm, setSearchRadiusKm, onStationClick }) {
+function FloatingSearchBar({ setLocation, searchRadiusKm, setSearchRadiusKm, onStationClick, stations: allStations = [] }) {
     const [query, setQuery]               = useState("");
     const [loading, setLoading]           = useState(false);
     const [error, setError]               = useState(null);
     const [suggestions, setSuggestions]   = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
-    const [allStations, setAllStations]   = useState([]);
     const wrapRef = useRef(null);
-
-    // Pobierz pełną listę stacji raz na mount — niezależnie od filtrów lokalizacji
-    useEffect(() => {
-        fetch(`${API_BASE_URL}/api/stations`)
-            .then((r) => r.ok ? r.json() : Promise.reject(r.status))
-            .then((data) => setAllStations(Array.isArray(data) ? data : []))
-            .catch((err) => console.error("Autocomplete fetch failed", err));
-    }, []);
 
     // Aktualizuj sugestie podczas pisania
     useEffect(() => {

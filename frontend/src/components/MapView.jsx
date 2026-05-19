@@ -41,8 +41,6 @@ function BoundsWatcher({ onViewportChange }) {
     const map = useMapEvents({});
 
     useEffect(() => {
-        let fetchTimer;
-
         const snapshot = () => {
             const zoom = map.getZoom();
             const bounds = map.getBounds();
@@ -59,22 +57,14 @@ function BoundsWatcher({ onViewportChange }) {
         };
 
         const handler = () => {
-            // Natychmiastowa aktualizacja viewport (markery)
-            onViewportChange({ ...snapshot(), shouldFetch: false });
-            // Fetch z debounceem
-            clearTimeout(fetchTimer);
-            fetchTimer = setTimeout(() => {
-                onViewportChange({ ...snapshot(), shouldFetch: true });
-            }, 600);
+            onViewportChange(snapshot());
         };
 
         map.on("moveend", handler);
         map.on("zoomend", handler);
-        // Pierwsze załadowanie
-        onViewportChange({ ...snapshot(), shouldFetch: true });
+        onViewportChange(snapshot());
 
         return () => {
-            clearTimeout(fetchTimer);
             map.off("moveend", handler);
             map.off("zoomend", handler);
         };
@@ -110,9 +100,7 @@ const StationMarker = memo(function StationMarker({ station, isSelected, onStati
     );
 });
 
-function MapView({ location, stations = [], selectedStationId, onStationClick, onViewportChange }) {
-    const selectedStation = stations.find((s) => s.id === selectedStationId);
-
+const MapView = memo(function MapView({ location, stations = [], selectedStationId, selectedStation, onStationClick, onViewportChange }) {
     return (
         <MapContainer
             center={[52.1128, 19.21195]}
@@ -144,6 +132,6 @@ function MapView({ location, stations = [], selectedStationId, onStationClick, o
             ))}
         </MapContainer>
     );
-}
+});
 
 export default MapView;

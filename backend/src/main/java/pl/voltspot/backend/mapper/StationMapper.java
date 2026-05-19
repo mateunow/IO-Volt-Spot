@@ -61,16 +61,8 @@ public final class StationMapper {
         );
     }
 
-    /**
-     * Na podstawie snapshotu wyznacza kategorię ikony markera:
-     * - WORKING  – są dostępne gniazda
-     * - OCCUPIED – zajęte/chwilowo niedostępne, brak wolnych
-     * - DISABLED – wyłączona lub usunięta
-     * - DEFAULT  – brak snapshotu lub same zera (status nieznany)
-     */
     private static String resolveMarkerStatus(StationStatusSnapshot s) {
         if (s == null) return "DEFAULT";
-
         int available    = s.getAvailableCount()    != null ? s.getAvailableCount()    : 0;
         int occupied     = s.getOccupiedCount()     != null ? s.getOccupiedCount()     : 0;
         int outOfService = s.getOutOfServiceCount() != null ? s.getOutOfServiceCount() : 0;

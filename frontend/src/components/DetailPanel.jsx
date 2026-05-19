@@ -25,6 +25,10 @@ function maxConnectorPower(connectors = []) {
     return max;
 }
 
+function markerStatusIsWorking(ms) {
+    return ms === "WORKING" || ms === "AVAILABLE" || ms === "WORKING_UNCONFIRMED";
+}
+
 function DetailPanel({
     open,
     station,
@@ -54,6 +58,7 @@ function DetailPanel({
     onCancelStationEdit,
     onSaveStationEdit,
     onStationEditChange,
+    onSubmitReport,
 }) {
     const [feedbackStatus, setFeedbackStatus] = useState("WORKING");
     const [feedbackComment, setFeedbackComment] = useState("");
@@ -61,6 +66,15 @@ function DetailPanel({
     const handleSubmit = () => {
         onSubmitFeedback(feedbackStatus, feedbackComment);
         setFeedbackComment("");
+        if (onSubmitReport && (feedbackStatus === "WORKING" || feedbackStatus === "NOT_WORKING")) {
+            const currentMarkerStatus = station?.markerStatus;
+            const currentIsWorking = markerStatusIsWorking(currentMarkerStatus);
+            const statusDiffers =
+                !currentMarkerStatus ||
+                (feedbackStatus === "NOT_WORKING" && currentIsWorking) ||
+                (feedbackStatus === "WORKING" && !currentIsWorking);
+            if (statusDiffers) onSubmitReport(feedbackStatus);
+        }
     };
 
     const data = details || station || {};

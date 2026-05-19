@@ -1,7 +1,58 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { memo, useCallback, useMemo, useState, useRef, useEffect } from "react";
 import StationCard from "./StationCard.jsx";
 import { IconBolt, IconChevronRight } from "./Icons.jsx";
 import { STATUS_COLORS } from "./markerIcons.js";
+
+const INITIAL_LIST_LIMIT = 50;
+const LIST_LIMIT_STEP = 50;
+
+const FavoriteRow = memo(function FavoriteRow({ favorite, isActive, onSelect, onRemove }) {
+    const station = useMemo(
+        () => ({
+            id: favorite.stationId,
+            name: favorite.stationName,
+            city: favorite.city,
+            operatorName: favorite.operatorName,
+            latitude: favorite.latitude,
+            longitude: favorite.longitude,
+            markerStatus: "DEFAULT",
+            addressLine: null,
+        }),
+        [favorite],
+    );
+    const handleRemove = useCallback(
+        (e) => {
+            e.stopPropagation();
+            onRemove?.(favorite.stationId);
+        },
+        [onRemove, favorite.stationId],
+    );
+
+    return (
+        <div className="favorite-row">
+            <StationCard
+                station={station}
+                isActive={isActive}
+                distanceKm={null}
+                onSelect={onSelect}
+            />
+            <button
+                className="favorite-remove-btn"
+                title="Usuń z ulubionych"
+                onClick={handleRemove}
+            >
+                <svg width="10" height="2" viewBox="0 0 10 2" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="0" y1="1" x2="10" y2="1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+            </button>
+        </div>
+    );
+});
+
+function formatDate(iso) {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
+}
 
 const RADIUS_OPTIONS = [2, 10, 25, 50];
 
@@ -55,10 +106,17 @@ function Sidebar({
     onAdvancedFilterChange,
     onClearAdvancedFilters,
     onToggleSidebar,
+    isAdmin = false,
+    adminOverrides = [],
+    adminOverridesLoading = false,
+    onConfirmOverride,
+    onRejectOverride,
 }) {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [favoritesCollapsed, setFavoritesCollapsed] = useState(true);
     const [advancedCollapsed, setAdvancedCollapsed] = useState(true);
+    const [adminCollapsed, setAdminCollapsed] = useState(false);
+    const [listLimit, setListLimit] = useState(INITIAL_LIST_LIMIT);
     const profileRef = useRef(null);
 
     useEffect(() => {
@@ -100,24 +158,33 @@ function Sidebar({
 
     const sortedStations = useMemo(() => {
         const ref = mapCenter ?? location;
-        return stations
-            .map((s) => {
-                const lat = Number(s.latitude);
-                const lon = Number(s.longitude);
-                const dist =
-                    ref && !Number.isNaN(lat) && !Number.isNaN(lon)
-                        ? haversineKm(ref.lat, ref.lon, lat, lon)
-                        : null;
-                return { ...s, _distance: dist };
-            })
-            .sort((a, b) => {
-                if (a._distance != null && b._distance != null)
-                    return a._distance - b._distance;
-                if (a._distance != null) return -1;
-                if (b._distance != null) return 1;
-                return 0;
-            });
+        const withDist = stations.map((s) => {
+            const lat = Number(s.latitude);
+            const lon = Number(s.longitude);
+            const dist =
+                ref && !Number.isNaN(lat) && !Number.isNaN(lon)
+                    ? haversineKm(ref.lat, ref.lon, lat, lon)
+                    : null;
+            return { station: s, distance: dist };
+        });
+        withDist.sort((a, b) => {
+            if (a.distance != null && b.distance != null)
+                return a.distance - b.distance;
+            if (a.distance != null) return -1;
+            if (b.distance != null) return 1;
+            return 0;
+        });
+        return withDist;
     }, [stations, mapCenter, location]);
+
+    const visibleSortedStations = useMemo(
+        () => sortedStations.slice(0, listLimit),
+        [sortedStations, listLimit],
+    );
+
+    useEffect(() => {
+        setListLimit(INITIAL_LIST_LIMIT);
+    }, [stations.length]);
 
     function toggleConnectorType(type) {
         const next = new Set(advancedFilters.connectorTypes);
@@ -367,42 +434,82 @@ function Sidebar({
                             {!favoritesListLoading && favoritesList.length > 0 && (
                                 <div className="station-list favorites-list">
                                     {favoritesList.map((favorite) => (
-                                        <div key={favorite.id} className="favorite-row">
-                                            <StationCard
-                                                station={{
-                                                    id: favorite.stationId,
-                                                    name: favorite.stationName,
-                                                    city: favorite.city,
-                                                    operatorName: favorite.operatorName,
-                                                    latitude: favorite.latitude,
-                                                    longitude: favorite.longitude,
-                                                    markerStatus: "DEFAULT",
-                                                    addressLine: null,
-                                                }}
-                                                isActive={
-                                                    String(favorite.stationId) ===
-                                                    String(selectedStationId)
-                                                }
-                                                distanceKm={null}
-                                                onClick={() => onFavoriteClick?.(favorite)}
-                                            />
-                                            <button
-                                                className="favorite-remove-btn"
-                                                title="Usuń z ulubionych"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onRemoveFavoriteById?.(favorite.stationId);
-                                                }}
-                                            >
-                                                <svg width="10" height="2" viewBox="0 0 10 2" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <line x1="0" y1="1" x2="10" y2="1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                                                </svg>
-                                            </button>
-                                        </div>
+                                        <FavoriteRow
+                                            key={favorite.id}
+                                            favorite={favorite}
+                                            isActive={
+                                                String(favorite.stationId) ===
+                                                String(selectedStationId)
+                                            }
+                                            onSelect={onStationClick}
+                                            onRemove={onRemoveFavoriteById}
+                                        />
                                     ))}
                                 </div>
                             )}
                         </>
+                    )}
+                </div>
+            )}
+
+            {isAdmin && (
+                <div className="filters-section">
+                    <div className="filters-header">
+                        <button
+                            type="button"
+                            className="section-toggle"
+                            onClick={() => setAdminCollapsed((v) => !v)}
+                            aria-expanded={!adminCollapsed}
+                        >
+                            <span>Zgłoszenia statusów</span>
+                            <span className="count">{adminOverrides.length}</span>
+                            <IconChevronRight
+                                className={`section-toggle-icon${adminCollapsed ? "" : " open"}`}
+                            />
+                        </button>
+                    </div>
+                    {!adminCollapsed && (
+                        <div className="admin-reports-list">
+                            {adminOverridesLoading && (
+                                <div className="empty-state">Ładowanie zgłoszeń…</div>
+                            )}
+                            {!adminOverridesLoading && adminOverrides.length === 0 && (
+                                <div className="empty-state">Brak oczekujących zgłoszeń</div>
+                            )}
+                            {adminOverrides.map((o) => (
+                                <div key={o.id} className="admin-report-card">
+                                    <div className="admin-report-station">
+                                        <span className="admin-report-name">{o.stationName}</span>
+                                        {o.stationCity && (
+                                            <span className="admin-report-city">{o.stationCity}</span>
+                                        )}
+                                    </div>
+                                    <div className="admin-report-meta">
+                                        <span className={`admin-report-badge ${o.reportedStatus === "NOT_WORKING" ? "bad" : "good"}`}>
+                                            {o.reportedStatus === "NOT_WORKING" ? "Nie działa" : "Działa"}
+                                        </span>
+                                        <span className="admin-report-counts">
+                                            ✓ {o.workingCount} · ✗ {o.notWorkingCount}
+                                        </span>
+                                        <span className="admin-report-date">{formatDate(o.createdAt)}</span>
+                                    </div>
+                                    <div className="admin-report-actions">
+                                        <button
+                                            className="admin-report-btn confirm"
+                                            onClick={() => onConfirmOverride?.(o.id)}
+                                        >
+                                            Zatwierdź
+                                        </button>
+                                        <button
+                                            className="admin-report-btn reject"
+                                            onClick={() => onRejectOverride?.(o.id)}
+                                        >
+                                            Odrzuć
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </div>
             )}
@@ -430,15 +537,24 @@ function Sidebar({
                             Brak stacji do wyświetlenia
                         </div>
                     )}
-                {sortedStations.map((s) => (
+                {visibleSortedStations.map(({ station, distance }) => (
                     <StationCard
-                        key={s.id}
-                        station={s}
-                        isActive={s.id === selectedStationId}
-                        distanceKm={s._distance}
-                        onClick={() => onStationClick(s.id)}
+                        key={station.id}
+                        station={station}
+                        isActive={station.id === selectedStationId}
+                        distanceKm={distance}
+                        onSelect={onStationClick}
                     />
                 ))}
+                {sortedStations.length > listLimit && (
+                    <button
+                        type="button"
+                        className="show-more-btn"
+                        onClick={() => setListLimit((n) => n + LIST_LIMIT_STEP)}
+                    >
+                        Pokaż więcej ({sortedStations.length - listLimit} pozostało)
+                    </button>
+                )}
             </div>
 
             <div className="sb-footer">

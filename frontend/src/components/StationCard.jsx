@@ -1,3 +1,4 @@
+import { memo, useCallback } from "react";
 import { statusColor } from "./markerIcons.js";
 import { IconStation } from "./Icons.jsx";
 
@@ -21,7 +22,7 @@ function availSegments(available, total) {
     return segs;
 }
 
-function StationCard({ station, isActive, onClick, distanceKm }) {
+const StationCard = memo(function StationCard({ station, isActive, onSelect, distanceKm }) {
     const c = statusColor(station.markerStatus);
     const status = station.latestStatus ?? {};
     const total =
@@ -32,9 +33,10 @@ function StationCard({ station, isActive, onClick, distanceKm }) {
         (status.unknownCount ?? 0);
     const available = status.availableCount ?? 0;
     const power = maxConnectorPower(station.connectors);
+    const handleClick = useCallback(() => onSelect?.(station.id), [onSelect, station.id]);
 
     return (
-        <div className={`station-card${isActive ? " active" : ""}`} onClick={onClick}>
+        <div className={`station-card${isActive ? " active" : ""}`} onClick={handleClick}>
             <div className="marker-mini" style={{ background: c.fill }}>
                 <IconStation />
             </div>
@@ -61,6 +63,6 @@ function StationCard({ station, isActive, onClick, distanceKm }) {
             )}
         </div>
     );
-}
+});
 
 export default StationCard;
