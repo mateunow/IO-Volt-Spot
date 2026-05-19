@@ -170,6 +170,7 @@ public class StationService {
         snapshot.setUnknownCount(0);
         snapshot.setRecordedAt(now);
         StationStatusSnapshot savedSnapshot = snapshotRepository.save(snapshot);
+        savedStation.getStatusSnapshots().add(savedSnapshot);
 
         StationOwner ownership = new StationOwner();
         ownership.setStation(savedStation);
@@ -290,10 +291,11 @@ public class StationService {
     }
 
     public void deleteStationById(Long stationId) {
-        if (!stationRepository.existsById(stationId)) {
-            throw new NotFoundException("Nie znaleziono stacji o id " + stationId);
-        }
-        stationRepository.deleteById(stationId);
+        Station station = stationRepository.findById(stationId)
+                .orElseThrow(() -> new NotFoundException("Nie znaleziono stacji o id " + stationId));
+        snapshotRepository.findByStationIdOrderByRecordedAtDesc(stationId)
+                .forEach(snapshot -> station.getStatusSnapshots().add(snapshot));
+        stationRepository.delete(station);
     }
 
     @Transactional

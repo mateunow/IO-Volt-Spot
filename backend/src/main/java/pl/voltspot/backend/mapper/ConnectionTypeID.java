@@ -31,6 +31,9 @@ public class ConnectionTypeID {
         temp.put(1041, "ThreePhaseAU");
         temp.put(1038, "GB_T_AC");
         temp.put(1040, "GB_T_DC");
+        temp.put(16, "CEE3Pin");
+        temp.put(17, "CEE5Pin");
+        temp.put(23, "CEE75");
 
         CONNECTORS = Collections.unmodifiableMap(temp);
     }

@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import pl.voltspot.backend.auth.AuthContext;
+import pl.voltspot.backend.auth.CurrentUser;
 import pl.voltspot.backend.auth.RequireAuth;
 import pl.voltspot.backend.auth.RequireRole;
 import pl.voltspot.backend.dto.report.CommunityOverrideResponse;
@@ -16,6 +17,7 @@ import pl.voltspot.backend.enums.UserRole;
 import pl.voltspot.backend.exceptions.BadRequestException;
 import pl.voltspot.backend.service.ConnectorReportService;
 import pl.voltspot.backend.service.StationReportService;
+import pl.voltspot.backend.service.StationService;
 
 import java.util.List;
 @RestController
@@ -24,6 +26,7 @@ public class StationReportController {
 
     private final StationReportService reportService;
     private final ConnectorReportService connectorReportService;
+    private final StationService stationService;
 
     @PostMapping("/api/stations/{stationId}/report")
     @ResponseStatus(HttpStatus.CREATED)
@@ -63,13 +66,14 @@ public class StationReportController {
     }
 
     @PostMapping("/api/admin/stations/{stationId}/set-status")
-    @RequireRole({UserRole.ADMIN})
+    @RequireRole({UserRole.ADMIN, UserRole.OWNER})
     public CommunityOverrideResponse setStationStatus(
             @PathVariable Long stationId,
             @Valid @RequestBody StationReportRequest request
     ) {
-        Long adminId = AuthContext.get().id();
-        return reportService.setStationStatusAsAdmin(stationId, adminId, request.reportedStatus());
+        CurrentUser currentUser = AuthContext.get();
+        stationService.requireWriteAccess(stationId, currentUser.id(), currentUser.role());
+        return reportService.setStationStatusAsAdmin(stationId, currentUser.id(), request.reportedStatus());
     }
 
     @PostMapping("/api/admin/overrides/{overrideId}/confirm")

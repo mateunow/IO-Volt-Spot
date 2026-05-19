@@ -12,20 +12,22 @@ public class OcmSyncScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(OcmSyncScheduler.class);
 
-    private static final double MIN_LAT = 49.0;
-    private static final double MAX_LAT = 54.9;
-    private static final double MIN_LON = 14.1;
-    private static final double MAX_LON = 24.2;
+    public static final double POLAND_MIN_LAT = 49.0;
+    public static final double POLAND_MAX_LAT = 54.9;
+    public static final double POLAND_MIN_LON = 14.1;
+    public static final double POLAND_MAX_LON = 24.2;
 
     private final StationService stationService;
     private final StationReportService stationReportService;
     private final ConnectorReportService connectorReportService;
+    private final StationCacheService stationCacheService;
 
     @Scheduled(cron = "0 0 */12 * * *")
     public void syncPoland() {
         log.info("Starting scheduled OCM sync for Poland...");
         try {
-            stationService.fetchStationsFromOCM(MIN_LAT, MIN_LON, MAX_LAT, MAX_LON);
+            stationService.fetchStationsFromOCM(POLAND_MIN_LAT, POLAND_MIN_LON, POLAND_MAX_LAT, POLAND_MAX_LON);
+            stationCacheService.refresh();
             log.info("Scheduled OCM sync for Poland completed.");
         } catch (Exception ex) {
             log.error("Scheduled OCM sync for Poland failed.", ex);

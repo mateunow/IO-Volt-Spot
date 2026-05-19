@@ -60,6 +60,9 @@ class StationServiceTest {
     @Mock
     private OCMClient ocmClient;
 
+    @Mock
+    private ConnectorReportService connectorReportService;
+
     @InjectMocks
     private StationService service;
 
@@ -156,9 +159,10 @@ class StationServiceTest {
 
     @Test
     void getStationById_returnsDetails_whenFound() {
-        when(stationRepository.findById(1L)).thenReturn(Optional.of(station));
+        when(stationRepository.findWithConnectorsById(1L)).thenReturn(Optional.of(station));
         when(snapshotRepository.findTopByStationIdOrderByRecordedAtDesc(1L))
                 .thenReturn(Optional.of(snapshot));
+        when(connectorReportService.getConnectorStatuses(any(), any())).thenReturn(List.of());
 
         StationDetailsResponse response = service.getStationById(1L);
 
@@ -170,9 +174,10 @@ class StationServiceTest {
 
     @Test
     void getStationById_returnsDetailsWithoutStatus_whenNoSnapshot() {
-        when(stationRepository.findById(1L)).thenReturn(Optional.of(station));
+        when(stationRepository.findWithConnectorsById(1L)).thenReturn(Optional.of(station));
         when(snapshotRepository.findTopByStationIdOrderByRecordedAtDesc(1L))
                 .thenReturn(Optional.empty());
+        when(connectorReportService.getConnectorStatuses(any(), any())).thenReturn(List.of());
 
         StationDetailsResponse response = service.getStationById(1L);
 
@@ -181,7 +186,7 @@ class StationServiceTest {
 
     @Test
     void getStationById_throwsNotFound_whenStationMissing() {
-        when(stationRepository.findById(99L)).thenReturn(Optional.empty());
+        when(stationRepository.findWithConnectorsById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.getStationById(99L))
                 .isInstanceOf(NotFoundException.class);
@@ -512,20 +517,23 @@ class StationServiceTest {
 
     @Test
     void deleteStationById_throwsNotFound_whenMissing() {
-        when(stationRepository.existsById(99L)).thenReturn(false);
+        when(stationRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.deleteStationById(99L))
                 .isInstanceOf(NotFoundException.class);
 
-        verify(stationRepository, never()).deleteById(any());
+        verify(stationRepository, never()).delete(any());
     }
 
     @Test
     void deleteStationById_deletesWhenExists() {
-        when(stationRepository.existsById(1L)).thenReturn(true);
+        Station station = new Station();
+        station.setId(1L);
+        when(stationRepository.findById(1L)).thenReturn(Optional.of(station));
+        when(snapshotRepository.findByStationIdOrderByRecordedAtDesc(1L)).thenReturn(List.of());
 
         service.deleteStationById(1L);
 
-        verify(stationRepository).deleteById(1L);
+        verify(stationRepository).delete(station);
     }
 }

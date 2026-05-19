@@ -26,7 +26,7 @@ public class StationConnector {
     @Column(name = "connector_type", nullable = false, length = 100)
     private String connectorType;
 
-    @Column(name = "current_type", length = 10)
+    @Column(name = "current_type", length = 20)
     private String currentType;
 
     @Column(name = "power_kw", precision = 8, scale = 2)

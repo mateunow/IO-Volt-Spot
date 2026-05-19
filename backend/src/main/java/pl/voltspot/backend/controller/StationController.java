@@ -14,6 +14,7 @@ import pl.voltspot.backend.dto.station.StationMarkerResponse;
 import pl.voltspot.backend.dto.station.StationStatusSnapshotResponse;
 import pl.voltspot.backend.dto.station.UpdateStationRequest;
 import pl.voltspot.backend.enums.UserRole;
+import pl.voltspot.backend.service.OcmSyncScheduler;
 import pl.voltspot.backend.service.StationCacheService;
 import pl.voltspot.backend.service.StationService;
 
@@ -88,6 +89,20 @@ public class StationController {
         CurrentUser currentUser = AuthContext.get();
         stationService.requireWriteAccess(stationId, currentUser.id(), currentUser.role());
         stationService.deleteStationById(stationId);
+        stationCacheService.refresh();
+    }
+
+    /** Ponowny import stacji OCM (Polska) – naprawia dane po zmianach w mapowaniu JSON. */
+    @PostMapping("/sync-ocm")
+    @RequireRole(UserRole.ADMIN)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void syncOcmStations() {
+        stationService.fetchStationsFromOCM(
+                OcmSyncScheduler.POLAND_MIN_LAT,
+                OcmSyncScheduler.POLAND_MIN_LON,
+                OcmSyncScheduler.POLAND_MAX_LAT,
+                OcmSyncScheduler.POLAND_MAX_LON
+        );
         stationCacheService.refresh();
     }
 }
