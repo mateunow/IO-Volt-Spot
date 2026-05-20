@@ -83,6 +83,12 @@ public class ConnectorReportService {
                 && statuses.stream().allMatch(s -> s.communityStatus() == ReportedStatus.NOT_WORKING);
         boolean allWorking = !allConnectors.isEmpty()
                 && statuses.stream().allMatch(s -> s.communityStatus() == ReportedStatus.WORKING);
+        boolean anyWorking = statuses.stream()
+                .anyMatch(s -> s.communityStatus() == ReportedStatus.WORKING);
+        boolean stationHasNotWorkingOverride = overrideRepository
+                .findByStationIdAndStateIn(stationId, List.of(OverrideState.PENDING, OverrideState.CONFIRMED))
+                .map(o -> o.getReportedStatus() == ReportedStatus.NOT_WORKING)
+                .orElse(false);
 
         CommunityStatusOverride activeOverride;
         if (allOccupied) {
@@ -91,7 +97,7 @@ public class ConnectorReportService {
         } else if (allNotWorking) {
             activeOverride = createStatusPendingOverride(station, ReportedStatus.NOT_WORKING);
             log.info("All connectors not working at station {} — NOT_WORKING PENDING override created", stationId);
-        } else if (allWorking) {
+        } else if (allWorking || (stationHasNotWorkingOverride && anyWorking)) {
             activeOverride = createStatusPendingOverride(station, ReportedStatus.WORKING);
             log.info("All connectors working at station {} — WORKING PENDING override created", stationId);
         } else {
